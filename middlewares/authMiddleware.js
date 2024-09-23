@@ -7,14 +7,14 @@ const authenticate = async (req, res, next) => {
         const authHeader = req.headers['authorization'];
 
         if (!authHeader || !authHeader.startsWith('Bearer ')) {
-            return res.status(401).json({ message: 'No token provided or invalid format' });
+            return res.status(401).json({ success: false, message: 'No token provided or invalid format' });
         }
 
         const token = authHeader.split(' ')[1];
 
         const blacklistedToken = await TokenBlacklist.findOne({ token });
         if (blacklistedToken) {
-            return res.status(401).json({ message: 'Token has been invalidated. Please log in again.' });
+            return res.status(401).json({ success: false, message: 'Token has been invalidated. Please log in again.' });
         }
 
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
@@ -27,7 +27,7 @@ const authenticate = async (req, res, next) => {
         next();
     } catch (err) {
         console.error(err);
-        return res.status(403).json({ message: 'Invalid token' });
+        return res.status(403).json({ success: false, message: 'Invalid token' });
     }
 };
 
