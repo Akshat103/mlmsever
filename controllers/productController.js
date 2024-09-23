@@ -146,12 +146,20 @@ const deleteProduct = async (req, res, next) => {
 // Get products by category
 const getProductsByCategory = async (req, res, next) => {
     try {
-        const products = await Product.find({ category: req.params.categoryId }).populate('category').populate('reviews');
+        const categoryId = req.params.categoryId;
+        
+        const query = categoryId && categoryId !== 'null' ? { category: categoryId } : { category: { $exists: false } };
+        
+        const products = await Product.find(query)
+            .populate('category')
+            .populate('reviews');
+
         successHandler(res, products, 'Products retrieved successfully');
     } catch (err) {
         next(err);
     }
 };
+
 
 module.exports = {
     createProduct,
