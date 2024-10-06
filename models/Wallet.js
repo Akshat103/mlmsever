@@ -1,4 +1,6 @@
 const mongoose = require('mongoose');
+const RewardThreshold = require('./RewardThreshold');
+const Reward = require('./Reward');
 
 const TransactionSchema = new mongoose.Schema({
     amount: {
@@ -28,6 +30,10 @@ const WithdrawalSchema = new mongoose.Schema({
     date: {
         type: Date,
         default: Date.now
+    },
+    pointsWithdrawn: {
+        type: Number,
+        required: true
     },
     status: {
         type: String,
@@ -79,7 +85,7 @@ const WalletSchema = new mongoose.Schema({
 });
 
 // Virtual property to calculate withdrawable amount
-WalletSchema.virtual('withdrawableAmount').get(function() {
+WalletSchema.virtual('withdrawableAmount').get(function () {
     if (this.currentMonthlyBalance < 500) {
         return 0;
     }
@@ -89,14 +95,14 @@ WalletSchema.virtual('withdrawableAmount').get(function() {
 });
 
 // Method to check if user is eligible for withdrawal
-WalletSchema.methods.isEligibleForWithdrawal = async function() {
+WalletSchema.methods.isEligibleForWithdrawal = async function () {
     const User = mongoose.model('User');
     const user = await User.findOne({ userId: this.userId });
     return user.referredCustomersCount >= 3 && this.currentMonthlyBalance >= 500;
 };
 
 // Method to reset monthly balance
-WalletSchema.methods.resetMonthlyBalance = function() {
+WalletSchema.methods.resetMonthlyBalance = function () {
     const now = new Date();
     const lastReset = new Date(this.lastResetDate);
     if (now.getMonth() !== lastReset.getMonth() || now.getFullYear() !== lastReset.getFullYear()) {
@@ -107,22 +113,69 @@ WalletSchema.methods.resetMonthlyBalance = function() {
     }
 };
 
-WalletSchema.methods.addDirectIncome = function(amount) {
+WalletSchema.methods.addDirectIncome = async function (amount) {
     this.directIncome.current += amount;
     this.directIncome.monthly += amount;
     this.currentBalance += amount;
     this.currentMonthlyBalance += amount;
+
+    await this.checkForReward();
+    await this.assignClubMembership();
 };
 
-WalletSchema.methods.addLevelIncome = function(amount) {
+WalletSchema.methods.addLevelIncome = async function (amount) {
     this.levelIncome.current += amount;
     this.levelIncome.monthly += amount;
     this.currentBalance += amount;
     this.currentMonthlyBalance += amount;
+
+    await this.checkForReward();
+    await this.assignClubMembership();
+};
+
+WalletSchema.methods.checkForReward = async function () {
+    const rewardThreshold = await RewardThreshold.findOne({ points: { $lte: this.currentBalance } }).sort({ points: -1 });
+
+    if (rewardThreshold) {
+        const existingReward = await Reward.findOne({ userId: this.userId, points: rewardThreshold.points });
+
+        if (!existingReward) {
+            const reward = new Reward({
+                userId: this.userId,
+                points: rewardThreshold.points,
+                rewardPoints: rewardThreshold.rewardPoints,
+                description: rewardThreshold.description
+            });
+            await reward.save();
+        }
+    }
+};
+
+// Virtual property for determining club membership based on monthly spending
+WalletSchema.virtual('clubMembership').get(function () {
+    if (this.currentMonthlyBalance >= 10000) {
+        return 'Gold';
+    } else if (this.currentMonthlyBalance >= 5000) {
+        return 'Silver';
+    } else {
+        return 'None';
+    }
+});
+
+// Method to assign club membership based on monthly balance
+WalletSchema.methods.assignClubMembership = async function () {
+    const membership = this.clubMembership;
+    const User = mongoose.model('User');
+    const user = await User.findOne({ userId: this.userId });
+
+    if (membership === 'Gold' || membership === 'Silver') {
+        user.club = membership;
+        await user.save();
+    }
 };
 
 // Method to process a withdrawal in rupees
-WalletSchema.methods.withdraw = async function(amountInRupees) {
+WalletSchema.methods.withdraw = async function (amountInRupees) {
     if (amountInRupees > this.withdrawableAmount) {
         throw new Error('Requested withdrawal amount exceeds the available withdrawable amount.');
     }
@@ -140,17 +193,21 @@ WalletSchema.methods.withdraw = async function(amountInRupees) {
     }
 
     const amountInPoints = amountInRupees * 5;
+    const pointsToWithdraw = amountInPoints / 0.9;
+
     const withdrawal = {
         amount: amountInRupees,
-        status: 'pending'
+        status: 'pending',
+        pointsWithdrawn: pointsToWithdraw
     };
 
     this.withdrawals.push(withdrawal);
-    this.currentBalance -= amountInPoints;
+    this.currentBalance -= pointsToWithdraw;
 
     await this.save();
-    
+
     return withdrawal;
 };
+
 
 module.exports = mongoose.model('Wallet', WalletSchema);

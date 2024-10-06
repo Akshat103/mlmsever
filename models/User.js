@@ -85,6 +85,11 @@ const UserSchema = new mongoose.Schema({
         type: String, 
         default: null 
     },
+    club: {
+        type: String,
+        enum: ['None', 'Silver', 'Gold'],
+        default: 'None'
+    },
     maxMonthlyWithdrawal: { 
         type: Number, 
         default: 0 
