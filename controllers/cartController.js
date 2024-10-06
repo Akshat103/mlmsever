@@ -62,7 +62,7 @@ const addProductToCart = async (req, res, next) => {
         }
 
         await cart.save();
-        successHandler(res, cart, 'Product added to cart');
+        successHandler(res, null, 'Product added to cart');
     } catch (err) {
         errorHandler(err, req, res, next);
     }

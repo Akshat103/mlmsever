@@ -3,6 +3,7 @@ const Cart = require('../models/Cart');
 const Product = require('../models/Product');
 const successHandler = require('../middlewares/successHandler');
 const errorHandler = require('../middlewares/errorHandler');
+const { commissionQueue } = require('../queues/commissionQueue');
 const mongoose = require('mongoose');
 
 // Create an Order from Cart
@@ -11,19 +12,27 @@ const createOrder = async (req, res, next) => {
     session.startTransaction();
 
     try {
-        const cart = await Cart.findOne({ user: req.user._id }).populate('products.product').session(session);
+        const cart = await Cart.findOne({ user: req.user._id })
+            .populate('products.product')
+            .session(session);
         if (!cart || cart.products.length === 0) {
             return res.status(400).json({ success: false, message: 'Cart is empty' });
         }
 
         let totalAmount = 0;
+        let totalPoints = 0;
 
+        // Calculate totalAmount and totalPoints
         for (let cartItem of cart.products) {
             const product = cartItem.product;
             if (!product || product.stock < cartItem.quantity) {
-                return res.status(400).json({ success: false, message: `Product ${product.name} is not available in the requested quantity` });
+                return res.status(400).json({ 
+                    success: false, 
+                    message: `Product ${product.name} is not available in the requested quantity` 
+                });
             }
             totalAmount += parseInt(product.price) * parseInt(cartItem.quantity);
+            totalPoints += parseInt(product.points) * parseInt(cartItem.quantity);
         }
 
         const order = new Order({
@@ -32,20 +41,25 @@ const createOrder = async (req, res, next) => {
                 product: item.product._id,
                 quantity: item.quantity
             })),
-            totalAmount
+            totalAmount,
+            totalPoints 
         });
 
+        // Save the order
         await order.save({ session });
 
+        // Reduce stock for each product in the order
         for (let cartItem of cart.products) {
             const product = await Product.findById(cartItem.product._id).session(session);
             product.stock -= cartItem.quantity;
             await product.save({ session });
         }
 
+        // Clear the cart after placing the order
         cart.products = [];
         await cart.save({ session });
 
+        // Commit the transaction
         await session.commitTransaction();
         successHandler(res, order, 'Order created successfully');
     } catch (err) {
@@ -75,9 +89,15 @@ const getUserOrders = async (req, res, next) => {
 const updateOrderStatus = async (req, res, next) => {
     try {
         const { orderId, status } = req.body;
-        const validStatuses = ['Pending', 'Shipped', 'Delivered', 'Cancelled'];
 
-        if (!validStatuses.includes(status)) {
+        const statusMap = {
+            0: 'Pending',
+            1: 'Shipped',
+            2: 'Delivered',
+            3: 'Cancelled'
+        };
+
+        if (!(status in statusMap)) {
             return res.status(400).json({ success: false, message: 'Invalid status' });
         }
 
@@ -91,8 +111,17 @@ const updateOrderStatus = async (req, res, next) => {
             return res.status(403).json({ success: false, message: 'Unauthorized' });
         }
 
-        order.status = status;
+        // Update order status
+        order.status = statusMap[status];
         await order.save();
+
+        // If the order is delivered, queue the commission job
+        if (statusMap[status] === 'Delivered') {
+            commissionQueue.add({
+                userid: order.user,
+                points: order.totalPoints
+            });
+        }
 
         successHandler(res, order, 'Order status updated successfully');
     } catch (err) {

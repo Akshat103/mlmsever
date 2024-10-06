@@ -12,6 +12,10 @@ const reviewRoutes = require('./routes/reviewRoutes');
 const wishlistRoutes = require('./routes/wishlistRoutes');
 const cartRoutes = require('./routes/cartRoutes');
 const orderRoutes = require('./routes/orderRoutes');
+const { setQueues: setRegistrationQueue } = require('./queues/registrationQueue');
+const { setCommissionQueue } = require('./queues/commissionQueue');
+const { router } = require('bull-board');
+require('./queues/processCommissionQueue');
 const app = express();
 
 // Connect to database
@@ -20,6 +24,11 @@ connectDB();
 // Middleware
 app.use(cors());
 app.use(bodyParser.json());
+
+// Setup Bull Board for Monitoring
+setRegistrationQueue();
+setCommissionQueue();
+app.use('/admin/queues', router);
 
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
