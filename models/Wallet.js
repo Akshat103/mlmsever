@@ -1,0 +1,156 @@
+const mongoose = require('mongoose');
+
+const TransactionSchema = new mongoose.Schema({
+    amount: {
+        type: Number,
+        required: true
+    },
+    type: {
+        type: String,
+        enum: ['credit', 'debit'],
+        required: true
+    },
+    description: {
+        type: String,
+        required: true
+    },
+    date: {
+        type: Date,
+        default: Date.now
+    }
+});
+
+const WithdrawalSchema = new mongoose.Schema({
+    amount: {
+        type: Number,
+        required: true
+    },
+    date: {
+        type: Date,
+        default: Date.now
+    },
+    status: {
+        type: String,
+        enum: ['pending', 'processed', 'rejected'],
+        default: 'pending'
+    }
+});
+
+const WalletSchema = new mongoose.Schema({
+    userId: {
+        type: String,
+        required: true,
+        unique: true
+    },
+    currentBalance: {
+        type: Number,
+        default: 0
+    },
+    currentMonthlyBalance: {
+        type: Number,
+        default: 0
+    },
+    directIncome: {
+        current: {
+            type: Number,
+            default: 0
+        },
+        monthly: {
+            type: Number,
+            default: 0
+        }
+    },
+    levelIncome: {
+        current: {
+            type: Number,
+            default: 0
+        },
+        monthly: {
+            type: Number,
+            default: 0
+        }
+    },
+    transactions: [TransactionSchema],
+    withdrawals: [WithdrawalSchema],
+    lastResetDate: {
+        type: Date,
+        default: Date.now
+    }
+});
+
+// Virtual property to calculate withdrawable amount
+WalletSchema.virtual('withdrawableAmount').get(function() {
+    if (this.currentMonthlyBalance < 500) {
+        return 0;
+    }
+    const grossAmountInRupees = Math.floor(this.currentBalance / 5);
+    const tdsAndAdminCharges = grossAmountInRupees * 0.1;
+    return grossAmountInRupees - tdsAndAdminCharges;
+});
+
+// Method to check if user is eligible for withdrawal
+WalletSchema.methods.isEligibleForWithdrawal = async function() {
+    const User = mongoose.model('User');
+    const user = await User.findOne({ userId: this.userId });
+    return user.referredCustomersCount >= 3 && this.currentMonthlyBalance >= 500;
+};
+
+// Method to reset monthly balance
+WalletSchema.methods.resetMonthlyBalance = function() {
+    const now = new Date();
+    const lastReset = new Date(this.lastResetDate);
+    if (now.getMonth() !== lastReset.getMonth() || now.getFullYear() !== lastReset.getFullYear()) {
+        this.currentMonthlyBalance = 0;
+        this.directIncome.monthly = 0;
+        this.levelIncome.monthly = 0;
+        this.lastResetDate = now;
+    }
+};
+
+WalletSchema.methods.addDirectIncome = function(amount) {
+    this.directIncome.current += amount;
+    this.directIncome.monthly += amount;
+    this.currentBalance += amount;
+    this.currentMonthlyBalance += amount;
+};
+
+WalletSchema.methods.addLevelIncome = function(amount) {
+    this.levelIncome.current += amount;
+    this.levelIncome.monthly += amount;
+    this.currentBalance += amount;
+    this.currentMonthlyBalance += amount;
+};
+
+// Method to process a withdrawal in rupees
+WalletSchema.methods.withdraw = async function(amountInRupees) {
+    if (amountInRupees > this.withdrawableAmount) {
+        throw new Error('Requested withdrawal amount exceeds the available withdrawable amount.');
+    }
+
+    const isEligible = await this.isEligibleForWithdrawal();
+    if (!isEligible) {
+        throw new Error('User is not eligible for withdrawal.');
+    }
+
+    const User = mongoose.model('User');
+    const user = await User.findOne({ userId: this.userId });
+
+    if (amountInRupees > user.maxMonthlyWithdrawal) {
+        throw new Error(`Monthly withdrawal limit reached for rank ${user.rank}. Max allowed: ₹${user.maxMonthlyEarnings}`);
+    }
+
+    const amountInPoints = amountInRupees * 5;
+    const withdrawal = {
+        amount: amountInRupees,
+        status: 'pending'
+    };
+
+    this.withdrawals.push(withdrawal);
+    this.currentBalance -= amountInPoints;
+
+    await this.save();
+    
+    return withdrawal;
+};
+
+module.exports = mongoose.model('Wallet', WalletSchema);
