@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
 const RewardThreshold = require('./RewardThreshold');
 const Reward = require('./Reward');
+const GlobalPointPool = require('./GlobalPointPool');
 
 const TransactionSchema = new mongoose.Schema({
     amount: {
@@ -114,23 +115,56 @@ WalletSchema.methods.resetMonthlyBalance = function () {
 };
 
 WalletSchema.methods.addDirectIncome = async function (amount) {
-    this.directIncome.current += amount;
-    this.directIncome.monthly += amount;
-    this.currentBalance += amount;
-    this.currentMonthlyBalance += amount;
+    const User = mongoose.model('User');
+    const user = await User.findOne({ userId: this.userId });
 
-    await this.checkForReward();
-    await this.assignClubMembership();
+    if (user.isActive) {
+        this.directIncome.current += amount;
+        this.directIncome.monthly += amount;
+        this.currentBalance += amount;
+        this.currentMonthlyBalance += amount;
+
+        const transaction = {
+            amount: amount,
+            type: 'credit',
+            description: 'Direct income added'
+        };
+        this.transactions.push(transaction);
+
+        await this.updateGlobalPointPool(amount);
+        await this.checkForReward();
+        await this.assignClubMembership();
+    }
 };
 
 WalletSchema.methods.addLevelIncome = async function (amount) {
-    this.levelIncome.current += amount;
-    this.levelIncome.monthly += amount;
-    this.currentBalance += amount;
-    this.currentMonthlyBalance += amount;
+    const User = mongoose.model('User');
+    const user = await User.findOne({ userId: this.userId });
 
-    await this.checkForReward();
-    await this.assignClubMembership();
+    if (user.isActive) {
+        this.levelIncome.current += amount;
+        this.levelIncome.monthly += amount;
+        this.currentBalance += amount;
+        this.currentMonthlyBalance += amount;
+
+        const transaction = {
+            amount: amount,
+            type: 'credit',
+            description: 'Level income added'
+        };
+        this.transactions.push(transaction);
+
+        await this.updateGlobalPointPool(amount);
+        await this.checkForReward();
+        await this.assignClubMembership();
+    }
+};
+
+// Method to update the global point pool for the current month
+WalletSchema.methods.updateGlobalPointPool = async function (amount) {
+    const globalPointPool = await GlobalPointPool.findOrCreateForCurrentMonth();
+    globalPointPool.totalMonthlyPoints += amount;
+    await globalPointPool.save();
 };
 
 WalletSchema.methods.checkForReward = async function () {

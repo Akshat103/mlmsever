@@ -1,0 +1,66 @@
+2024-10-07T14:28:33.617Z info: Server running on port 5000
+2024-10-07T14:28:33.669Z info: Processing job with ID: 4, Parent ID: undefined, Customer ID: 06ADE51F2D
+2024-10-07T14:28:36.220Z info: MongoDB connected
+2024-10-07T14:28:36.494Z error: Error processing job:
+2024-10-07T14:28:43.209Z info: Server running on port 5000
+2024-10-07T14:28:47.377Z info: MongoDB connected
+2024-10-07T14:29:05.565Z info: Server running on port 5000
+2024-10-07T14:29:07.938Z info: MongoDB connected
+2024-10-07T14:29:18.012Z info: Incoming Request: POST /api/users/register
+2024-10-07T14:29:18.126Z info: Processing job with ID: 5, Parent ID: undefined, Customer ID: 645823E918
+2024-10-07T14:33:12.276Z info: Server running on port 5000
+2024-10-07T14:33:12.897Z info: MongoDB connected
+2024-10-07T14:33:19.007Z info: Incoming Request: POST /api/users/register
+2024-10-07T14:33:19.122Z info: Processing job with ID: 6, Parent ID: undefined, Customer ID: F3CABF0832
+2024-10-07T14:33:19.284Z info: Customer with userId F3CABF0832 registered successfully.
+2024-10-07T14:33:19.288Z info: User created successfully: F3CABF0832
+2024-10-07T14:33:42.517Z info: Processing job with ID: 5, Parent ID: undefined, Customer ID: 645823E918
+2024-10-07T14:33:42.563Z error: Error processing job:
+2024-10-07T14:35:17.216Z info: Server running on port 5000
+2024-10-07T14:35:17.850Z info: MongoDB connected
+2024-10-07T14:35:47.474Z info: Incoming Request: POST /api/users/register
+2024-10-07T14:35:47.590Z info: Processing job with ID: 7, Parent ID: undefined, Customer ID: 1C7343B7D2
+2024-10-07T14:35:47.705Z info: Customer with userId 1C7343B7D2 registered successfully.
+2024-10-07T14:35:47.710Z info: User created successfully: 1C7343B7D2
+2024-10-07T14:37:25.081Z info: Incoming Request: POST /api/users/register
+2024-10-07T14:37:25.187Z info: Processing job with ID: 8, Parent ID: 1C7343B7D2, Customer ID: 985B0E86A1
+2024-10-07T14:37:25.227Z info: Finding next available spot starting from userId: 1C7343B7D2
+2024-10-07T14:37:25.274Z info: Available spot found at userId: 1C7343B7D2
+2024-10-07T14:37:25.505Z info: Updating ancestors for customerId: 1C7343B7D2
+2024-10-07T14:37:25.563Z info: Counting descendants for userId: 1C7343B7D2, initial count: 1
+2024-10-07T14:37:25.591Z info: Counting descendants for userId: 985B0E86A1, initial count: 0
+2024-10-07T14:37:25.592Z info: Total descendants for userId: 985B0E86A1 is 0
+2024-10-07T14:37:25.593Z info: Total descendants for userId: 1C7343B7D2 is 1
+2024-10-07T14:37:25.625Z info: Updated userId: 1C7343B7D2 with level: 0, totalDescendantsCount: 1
+2024-10-07T14:37:25.649Z info: Customer with userId 985B0E86A1 registered successfully.
+2024-10-07T14:37:25.653Z info: User created successfully: 985B0E86A1
+2024-10-07T14:38:23.652Z info: Incoming Request: POST /api/users/register
+2024-10-07T14:38:23.756Z info: Processing job with ID: 9, Parent ID: 1C7343B7D2, Customer ID: 35EAA99F7C
+2024-10-07T14:38:23.777Z info: Finding next available spot starting from userId: 1C7343B7D2
+2024-10-07T14:38:23.816Z info: Available spot found at userId: 1C7343B7D2
+2024-10-07T14:38:23.943Z info: Updating ancestors for customerId: 1C7343B7D2
+2024-10-07T14:38:23.981Z info: Counting descendants for userId: 1C7343B7D2, initial count: 2
+2024-10-07T14:38:24.017Z info: Counting descendants for userId: 985B0E86A1, initial count: 0
+2024-10-07T14:38:24.017Z info: Total descendants for userId: 985B0E86A1 is 0
+2024-10-07T14:38:24.052Z info: Counting descendants for userId: 35EAA99F7C, initial count: 0
+2024-10-07T14:38:24.053Z info: Total descendants for userId: 35EAA99F7C is 0
+2024-10-07T14:38:24.053Z info: Total descendants for userId: 1C7343B7D2 is 2
+2024-10-07T14:38:24.120Z info: Updated userId: 1C7343B7D2 with level: 0, totalDescendantsCount: 2
+2024-10-07T14:38:24.144Z info: Customer with userId 35EAA99F7C registered successfully.
+2024-10-07T14:38:24.146Z info: User created successfully: 35EAA99F7C
+2024-10-07T14:38:32.616Z info: Incoming Request: POST /api/users/register
+2024-10-07T14:38:32.731Z info: Processing job with ID: 10, Parent ID: 1C7343B7D2, Customer ID: 665D1C7A5E
+2024-10-07T14:38:32.756Z info: Finding next available spot starting from userId: 1C7343B7D2
+2024-10-07T14:38:32.796Z info: Available spot found at userId: 1C7343B7D2
+2024-10-07T14:38:32.943Z info: Updating ancestors for customerId: 1C7343B7D2
+2024-10-07T14:38:33.000Z info: Counting descendants for userId: 1C7343B7D2, initial count: 3
+2024-10-07T14:38:33.023Z info: Counting descendants for userId: 985B0E86A1, initial count: 0
+2024-10-07T14:38:33.023Z info: Total descendants for userId: 985B0E86A1 is 0
+2024-10-07T14:38:33.053Z info: Counting descendants for userId: 35EAA99F7C, initial count: 0
+2024-10-07T14:38:33.053Z info: Total descendants for userId: 35EAA99F7C is 0
+2024-10-07T14:38:33.078Z info: Counting descendants for userId: 665D1C7A5E, initial count: 0
+2024-10-07T14:38:33.078Z info: Total descendants for userId: 665D1C7A5E is 0
+2024-10-07T14:38:33.079Z info: Total descendants for userId: 1C7343B7D2 is 3
+2024-10-07T14:38:33.151Z info: Updated userId: 1C7343B7D2 with level: 1, totalDescendantsCount: 3
+2024-10-07T14:38:33.172Z info: Customer with userId 665D1C7A5E registered successfully.
+2024-10-07T14:38:33.177Z info: User created successfully: 665D1C7A5E

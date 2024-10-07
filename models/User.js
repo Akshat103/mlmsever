@@ -3,7 +3,7 @@ const mongoose = require('mongoose');
 const validator = require('validator');
 
 const rankDetails = {
-    3: { rank: null, maxWithdrawal: 10000 },
+    3: { rank: 'Star', maxWithdrawal: 10000 },
     10: { rank: 'Silver', maxWithdrawal: 50000 },
     12: { rank: 'Gold', maxWithdrawal: 100000 },
     15: { rank: 'Ruby', maxWithdrawal: 500000 },
@@ -81,33 +81,39 @@ const UserSchema = new mongoose.Schema({
         type: mongoose.Schema.Types.ObjectId,
         ref: 'Wallet'
     },
-    rank: { 
-        type: String, 
-        default: null 
+    rank: {
+        type: String,
+        default: null
     },
     club: {
         type: String,
         enum: ['None', 'Silver', 'Gold'],
         default: 'None'
     },
-    maxMonthlyWithdrawal: { 
-        type: Number, 
-        default: 0 
+    maxMonthlyWithdrawal: {
+        type: Number,
+        default: 0
+    },
+    isActive: {
+        type: Boolean,
+        default: false
     }
 });
 
 UserSchema.post('save', function (doc, next) {
-    const count = doc.referredCustomersCount;
-    const rankDetail = Object.keys(rankDetails).reverse().find(key => count >= key);
-    if (rankDetail) {
-        doc.rank = rankDetails[rankDetail].rank;
-        doc.maxMonthlyWithdrawal = rankDetails[rankDetail].maxWithdrawal;
-        doc.save();
+    if (doc.isActive) {
+        const count = doc.referredCustomersCount;
+        const rankDetail = Object.keys(rankDetails).reverse().find(key => count >= key);
+        if (rankDetail) {
+            doc.rank = rankDetails[rankDetail].rank;
+            doc.maxMonthlyWithdrawal = rankDetails[rankDetail].maxWithdrawal;
+            doc.save();
+        }
     }
     next();
 });
 
-UserSchema.post('save', async function(doc, next) {
+UserSchema.post('save', async function (doc, next) {
     const Wallet = mongoose.model('Wallet');
     if (!doc.wallet) {
         const wallet = await Wallet.create({ userId: doc.userId });

@@ -6,6 +6,7 @@ const errorHandler = require('../middlewares/errorHandler');
 const { commissionQueue } = require('../queues/commissionQueue');
 const mongoose = require('mongoose');
 const logger = require('../config/logger');
+const User = require('../models/User');
 
 // Create an Order from Cart
 const createOrder = async (req, res, next) => {
@@ -29,9 +30,9 @@ const createOrder = async (req, res, next) => {
             const product = cartItem.product;
             if (!product || product.stock < cartItem.quantity) {
                 logger.warn(`Insufficient stock for product ${product.name} for user ${req.user._id}`);
-                return res.status(400).json({ 
-                    success: false, 
-                    message: `Product ${product.name} is not available in the requested quantity` 
+                return res.status(400).json({
+                    success: false,
+                    message: `Product ${product.name} is not available in the requested quantity`
                 });
             }
             totalAmount += parseInt(product.price) * parseInt(cartItem.quantity);
@@ -45,7 +46,7 @@ const createOrder = async (req, res, next) => {
                 quantity: item.quantity
             })),
             totalAmount,
-            totalPoints 
+            totalPoints
         });
 
         // Save the order
@@ -110,7 +111,7 @@ const updateOrderStatus = async (req, res, next) => {
             return res.status(400).json({ success: false, message: 'Invalid status' });
         }
 
-        const order = await Order.findById(orderId);
+        const order = await Order.findById(orderId).populate('products');
         if (!order) {
             logger.warn(`Order ${orderId} not found for user ${req.user._id}`);
             return res.status(404).json({ success: false, message: 'Order not found' });
@@ -126,8 +127,20 @@ const updateOrderStatus = async (req, res, next) => {
         await order.save();
         logger.info(`Order ${orderId} status updated to ${order.status} by user ${req.user._id}`);
 
-        // If the order is delivered, queue the commission job
+        // If the order is delivered, check for activation conditions
         if (order.status === 'Delivered') {
+            const activationProductExists = order.products.some(product => product.activatonProduct === true);
+
+            if (activationProductExists && !req.user.isActive) {
+                const user = await User.findById(req.user._id);
+                if (user) {
+                    user.isActive = true;
+                    await user.save();
+                    logger.info(`User ${req.user._id} activated due to activation product purchase.`);
+                }
+            }
+
+            // Queue the commission job
             commissionQueue.add({
                 userid: order.user,
                 points: order.totalPoints
@@ -140,6 +153,7 @@ const updateOrderStatus = async (req, res, next) => {
         errorHandler(err, req, res, next);
     }
 };
+
 
 // Cancel Order
 const cancelOrder = async (req, res, next) => {

@@ -18,6 +18,7 @@ const { setQueues: setRegistrationQueue } = require('./queues/registrationQueue'
 const { setCommissionQueue } = require('./queues/commissionQueue');
 const { router } = require('bull-board');
 require('./queues/processCommissionQueue');
+require('./jobs/GlobalPointPoolJob');
 const logger = require('./config/logger');
 
 const app = express();
