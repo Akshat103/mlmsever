@@ -9,11 +9,7 @@ const RewardThresholdSchema = new mongoose.Schema({
     description: {
         type: String,
         required: true
-    },
-    rewardPoints: {
-        type: Number,
-        required: true
-    },
+    }
 });
 
 module.exports = mongoose.model('RewardThreshold', RewardThresholdSchema);

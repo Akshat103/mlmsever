@@ -2,6 +2,7 @@ const cron = require('node-cron');
 const mongoose = require('mongoose');
 const GlobalPointPool = require('../models/GlobalPointPool');
 const User = require('../models/User');
+const logger = require('../config/logger');
 
 // Helper function to get the previous month and year
 function getPreviousMonthAndYear() {
@@ -19,13 +20,13 @@ async function distributePoints() {
         // Get the Global Point Pool for the previous month
         const globalPointPool = await GlobalPointPool.findOne({ month: previousMonth, year });
         if (!globalPointPool) {
-            console.log(`No global point pool found for month ${previousMonth} and year ${year}`);
+            logger.info(`No global point pool found for month ${previousMonth} and year ${year}`);
             return;
         }
 
         // Calculate 1% of the total monthly points
-        const pointsToDistribute = Math.floor(lastMonthPool.totalMonthlyPoints * 0.01);
-        console.log(`Distributing ${pointsToDistribute} points for month ${previousMonth}, year ${year}`);
+        const pointsToDistribute = Math.floor(globalPointPool.totalMonthlyPoints * 0.01);
+        logger.info(`Distributing ${pointsToDistribute} points for month ${previousMonth}, year ${year}`);
 
         // Find all users with club status "Silver" or "Gold" or rank "Crown"
         const qualifyingUsers = await User.find({
@@ -38,7 +39,7 @@ async function distributePoints() {
         const numberOfUsers = qualifyingUsers.length;
 
         if (numberOfUsers === 0) {
-            console.log('No qualifying users found.');
+            logger.info('No qualifying users found.');
             return;
         }
 
@@ -52,18 +53,18 @@ async function distributePoints() {
                 if (wallet) {
                     wallet.addDirectIncome(pointsPerUser);
                     await wallet.save();
-                    console.log(`Distributed ${pointsPerUser} points to user ${user.userId}`);
+                    logger.info(`Distributed ${pointsPerUser} points to user ${user.userId}`);
                 }
             }
         }
 
-        console.log('Point distribution completed successfully.');
+        logger.info('Point distribution completed successfully.');
     } catch (error) {
-        console.error('Error during point distribution:', error);
+        logger.error('Error during point distribution:', error);
     }
 }
 
 // Schedule the cron job to run on the 5th of every month at 00:00
 cron.schedule('0 0 5 * *', distributePoints);
 
-console.log('Cron job scheduled for point distribution on the 5th of every month.');
+logger.info('Cron job scheduled for point distribution on the 5th of every month.');

@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const authenticate = require('../middlewares/authMiddleware');
 const orderController = require('../controllers/orderController');
+const isAdmin = require('../middlewares/isAdmin');
 
 // Create Order from Carts
 router.post('/create', authenticate, orderController.createOrder);
@@ -10,7 +11,7 @@ router.post('/create', authenticate, orderController.createOrder);
 router.get('/', authenticate, orderController.getUserOrders);
 
 // Update Order Status
-router.put('/update-status', authenticate, orderController.updateOrderStatus);
+router.put('/update-status', authenticate, isAdmin, orderController.updateOrderStatus);
 
 // Cancel Order
 router.post('/cancel', authenticate, orderController.cancelOrder);

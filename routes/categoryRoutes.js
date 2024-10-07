@@ -7,14 +7,15 @@ const {
 
 const router = express.Router();
 const authenticate = require('../middlewares/authMiddleware');
+const isAdmin = require('../middlewares/isAdmin');
 
 // Create a new category
-router.post('/create', authenticate, createCategory);
+router.post('/create', authenticate, isAdmin, createCategory);
 
 // Get all categories
 router.get('/get-all', authenticate, getAllCategories);
 
 // Delete a category
-router.delete('/:id', authenticate, deleteCategory);
+router.delete('/:id', authenticate, isAdmin, deleteCategory);
 
 module.exports = router;

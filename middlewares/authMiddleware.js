@@ -2,6 +2,7 @@ const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const TokenBlacklist = require('../models/TokenBlacklist');
 const logger = require('../config/logger');
+const Admin = require('../models/Admin');
 
 const authenticate = async (req, res, next) => {
     try {
@@ -21,11 +22,19 @@ const authenticate = async (req, res, next) => {
         }
 
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
-        const user = await User.findById(decoded.userId);
 
+        // Check if the user is an admin
+        const admin = await Admin.findById(decoded.userId);
+        if (admin) {
+            req.user = admin;
+            return next();
+        }
+
+        // If not an admin, check for a regular user
+        const user = await User.findById(decoded.userId);
         if (!user) {
-            logger.warn('Unauthorized access attempt.');
-            return res.status(401).json({ message: 'Unauthorized' });
+            logger.warn('Unauthorized access attempt: User not found.');
+            return res.status(401).json({ success: false, message: 'Unauthorized' });
         }
         
         req.user = user;

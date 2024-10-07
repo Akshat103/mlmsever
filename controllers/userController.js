@@ -1,9 +1,13 @@
+const mongoose = require('mongoose');
 const User = require('../models/User');
+const Admin = require('../models/Admin');
 const bcrypt = require('bcrypt');
 const { registrationQueue } = require('../queues/registrationQueue');
 const { v4: uuidv4 } = require('uuid');
 const successHandler = require('../middlewares/successHandler');
 const logger = require('../config/logger');
+const dotenv = require('dotenv');
+dotenv.config();
 
 // Generate 10-character alphanumeric userId
 const generateId = () => uuidv4().replace(/-/g, '').toUpperCase().slice(0, 10);
@@ -155,12 +159,14 @@ async function getTotalDescendants(customerId) {
 
 // Create a new user
 const createUser = async (req, res, next) => {
-    const session = await User.startSession();
+    const session = await mongoose.startSession();
+    let responseSent = false;
     try {
         session.startTransaction();
 
-        const { parentId, password, ...rest } = req.body;
+        const { parentId, password, isAdmin, adminKey, ...rest } = req.body;
 
+        // Password validation
         if (password.length < 8 || !/^(?=.*[a-zA-Z])(?=.*\d)[a-zA-Z\d]+$/.test(password)) {
             throw new Error('Password must be alphanumeric and at least 8 characters long.');
         }
@@ -168,32 +174,87 @@ const createUser = async (req, res, next) => {
         const hashedPassword = await bcrypt.hash(password, 10);
         const userId = generateId();
 
-        const job = await registrationQueue.add({
-            ...rest,
-            password: hashedPassword,
-            parentId,
-            userId,
-        });
-
-        job.finished()
-            .then(result => {
-                session.commitTransaction();
-                session.endSession();
-                logger.info(`User created successfully: ${userId}`);
-                res.status(201).json(result);
-            })
-            .catch(error => {
-                session.abortTransaction();
-                session.endSession();
-                logger.error(`Error processing registration for userId ${userId}: ${error.message}`);
-                res.status(500).json({
-                    error: "An error occurred while processing your registration: " + error.message,
-                });
+        // Decide whether to create an Admin or a User
+        if (isAdmin && adminKey === process.env.ADMIN_KEY) {
+            // Create an Admin
+            const admin = new Admin({
+                ...rest,
+                password: hashedPassword,
+                isAdmin: true
             });
+
+            await admin.save({ session });
+
+            await session.commitTransaction();
+            session.endSession();
+            logger.info(`Admin created successfully: ${admin._id}`);
+            responseSent = true;
+            return res.status(201).json({ success: true, message: 'Admin created successfully', adminId: admin._id });
+        } else {
+            // Create a User
+            const job = await registrationQueue.add({
+                ...rest,
+                password: hashedPassword,
+                parentId,
+                userId,
+            });
+
+            job.finished()
+                .then(result => {
+                    if (!responseSent) {
+                        session.commitTransaction();
+                        session.endSession();
+                        logger.info(`User created successfully: ${userId}`);
+                        res.status(201).json(result);
+                    }
+                })
+                .catch(error => {
+                    if (!responseSent) {
+                        session.abortTransaction();
+                        session.endSession();
+                        logger.error(`Error processing registration for userId ${userId}: ${error.message}`);
+                        res.status(500).json({
+                            success: false,
+                            error: "An error occurred while processing your registration: " + error.message,
+                        });
+                    }
+                });
+        }
     } catch (error) {
         await session.abortTransaction();
         session.endSession();
-        logger.error(`Transaction failed while creating user: ${error.message}`);
+
+        // Handle duplicate key error (like email already exists)
+        if (error.code === 11000) { 
+            logger.error(`Duplicate key error: ${error.message}`);
+            if (!responseSent) {
+                return res.status(400).json({
+                    success: false,
+                    error: "Email already exists. Please use a different.",
+                });
+            }
+        }
+
+        // Handle validation errors (like invalid email format)
+        if (error.name === 'ValidationError') {
+            logger.error(`Validation failed: ${error.message}`);
+            if (!responseSent) {
+                return res.status(400).json({
+                    success: false,
+                    error: `Validation failed: ${Object.values(error.errors).map(err => err.message).join(', ')}`,
+                });
+            }
+        }
+
+        // Handle any other errors
+        logger.error(`Transaction failed while creating user/admin: ${error.message}`);
+        if (!responseSent) {
+            res.status(500).json({
+                success: false,
+                error: `An error occurred: ${error.message}`,
+            });
+        }
+
         next(error);
     }
 };

@@ -4,12 +4,11 @@ const logger = require('../config/logger');
 
 // Create a new threshold
 const createThreshold = async (req, res, next) => {
-    const { points, description, rewardPoints } = req.body;
+    const { points, description } = req.body;
 
     const threshold = new RewardThreshold({
         points,
-        description,
-        rewardPoints
+        description
     });
 
     try {

@@ -1,5 +1,4 @@
 const Reward = require('../models/Reward');
-const Wallet = require('../models/Wallet');
 const logger = require('../config/logger');
 
 // Get reward by userId
@@ -39,17 +38,6 @@ const redeemReward = async (req, res) => {
 
         reward.isRedeemed = true;
         await reward.save();
-
-        // Find the user's wallet and add the reward points to it
-        const wallet = await Wallet.findOne({ userId: reward.userId });
-
-        if (wallet) {
-            await wallet.addDirectIncome(reward.rewardPoints);
-            await wallet.save();
-            logger.info(`Reward points added to wallet for userId: ${reward.userId}`); // Log success
-        } else {
-            logger.warn(`Wallet not found for userId: ${reward.userId}`); // Log warning
-        }
 
         logger.info(`Reward redeemed successfully for rewardId: ${rewardId}`); // Log success
         res.status(200).json({ message: 'Reward redeemed successfully and points added to wallet.', reward });

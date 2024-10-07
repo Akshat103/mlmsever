@@ -10,9 +10,10 @@ const {
 } = require('../controllers/productController');
 const router = express.Router();
 const authenticate = require('../middlewares/authMiddleware');
+const isAdmin = require('../middlewares/isAdmin');
 
 // Create a new product with image upload
-router.post('/add', authenticate, upload.array('images', 3), createProduct);
+router.post('/add', authenticate, isAdmin, upload.array('images', 3), createProduct);
 
 // Get all products
 router.get('/get-all', authenticate, getAllProducts);
@@ -24,7 +25,7 @@ router.get('/:id', authenticate, getProductById);
 router.put('/:id', authenticate, upload.array('images', 3), updateProduct);
 
 // Delete a product
-router.delete('/:id', authenticate, deleteProduct);
+router.delete('/:id', authenticate, isAdmin, deleteProduct);
 
 // Get products by category
 router.get('/category/:categoryId', authenticate, getProductsByCategory);

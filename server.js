@@ -14,6 +14,7 @@ const cartRoutes = require('./routes/cartRoutes');
 const orderRoutes = require('./routes/orderRoutes');
 const rewardThresholdRoutes = require('./routes/rewardThresholdRoutes');
 const rewardRoutes = require('./routes/rewardRoutes');
+const adminRoutes = require('./routes/adminRoutes');
 const { setQueues: setRegistrationQueue } = require('./queues/registrationQueue');
 const { setCommissionQueue } = require('./queues/commissionQueue');
 const { router } = require('bull-board');
@@ -52,6 +53,7 @@ app.use('/api/carts', cartRoutes);
 app.use('/api/orders', orderRoutes);
 app.use('/api/manage-reward', rewardThresholdRoutes);
 app.use('/api/rewards', rewardRoutes);
+app.use('/api/admins', adminRoutes);
 
 app.get('/api', (req, res) => {
     res.send('Welcome to MLM E-commerce.');
