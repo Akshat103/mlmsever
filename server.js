@@ -18,6 +18,8 @@ const { setQueues: setRegistrationQueue } = require('./queues/registrationQueue'
 const { setCommissionQueue } = require('./queues/commissionQueue');
 const { router } = require('bull-board');
 require('./queues/processCommissionQueue');
+const logger = require('./config/logger');
+
 const app = express();
 
 // Connect to database
@@ -26,6 +28,12 @@ connectDB();
 // Middleware
 app.use(cors());
 app.use(bodyParser.json());
+
+// Log incoming requests
+app.use((req, res, next) => {
+    logger.info(`Incoming Request: ${req.method} ${req.originalUrl}`);
+    next();
+});
 
 // Setup Bull Board for Monitoring
 setRegistrationQueue();
@@ -48,14 +56,20 @@ app.get('/api', (req, res) => {
     res.send('Welcome to MLM E-commerce.');
 });
 
+// 404 handler
 app.use((req, res) => {
+    logger.warn(`404 Not Found: ${req.method} ${req.originalUrl}`);
     res.status(404).send('No service here.');
 });
 
 // Global error handling middleware
-app.use(errorHandler);
+app.use((err, req, res, next) => {
+    logger.error(`Error: ${err.message}`);
+    res.status(500).send('Server Error');
+    next(err);
+});
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
+    logger.info(`Server running on port ${PORT}`);
 });

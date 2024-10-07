@@ -3,6 +3,7 @@ const Product = require('../models/Product');
 const Category = require('../models/Category');
 const Review = require('../models/Review');
 const successHandler = require('../middlewares/successHandler');
+const logger = require('../config/logger'); // Adjust the path as necessary
 
 // Create a new product
 const createProduct = async (req, res, next) => {
@@ -21,9 +22,11 @@ const createProduct = async (req, res, next) => {
         await session.commitTransaction();
         session.endSession();
         successHandler(res, null, 'Product created successfully');
+        logger.info(`Product created: ${newProduct._id}`); // Log product creation
     } catch (err) {
         await session.abortTransaction();
         session.endSession();
+        logger.error(`Error creating product: ${err.message}`); // Log the error
         next(err);
     }
 };
@@ -33,7 +36,9 @@ const getAllProducts = async (req, res, next) => {
     try {
         const products = await Product.find().populate('category').populate('reviews');
         successHandler(res, products, 'Products retrieved successfully');
+        logger.info('All products retrieved successfully'); // Log retrieval success
     } catch (err) {
+        logger.error(`Error retrieving products: ${err.message}`); // Log the error
         next(err);
     }
 };
@@ -42,9 +47,14 @@ const getAllProducts = async (req, res, next) => {
 const getProductById = async (req, res, next) => {
     try {
         const product = await Product.findById(req.params.id).populate('category').populate('reviews');
-        if (!product) return res.status(404).json({ message: 'Product not found' });
+        if (!product) {
+            logger.warn(`Product not found: ${req.params.id}`); // Log warning
+            return res.status(404).json({ message: 'Product not found' });
+        }
         successHandler(res, product, 'Product retrieved successfully');
+        logger.info(`Product retrieved: ${req.params.id}`); // Log retrieval
     } catch (err) {
+        logger.error(`Error retrieving product: ${err.message}`); // Log the error
         next(err);
     }
 };
@@ -62,6 +72,7 @@ const updateProduct = async (req, res, next) => {
         if (!existingProduct) {
             await session.abortTransaction();
             session.endSession();
+            logger.warn(`Product not found for update: ${productId}`); // Log warning
             return res.status(404).json({ message: 'Product not found' });
         }
 
@@ -96,11 +107,16 @@ const updateProduct = async (req, res, next) => {
         await session.commitTransaction();
         session.endSession();
 
-        if (!updatedProduct) return res.status(404).json({ message: 'Product not found' });
+        if (!updatedProduct) {
+            logger.warn(`Product not found after update attempt: ${productId}`); // Log warning
+            return res.status(404).json({ message: 'Product not found' });
+        }
         successHandler(res, updatedProduct, 'Product updated successfully');
+        logger.info(`Product updated: ${productId}`); // Log update success
     } catch (err) {
         await session.abortTransaction();
         session.endSession();
+        logger.error(`Error updating product: ${err.message}`); // Log the error
         next(err);
     }
 };
@@ -117,6 +133,7 @@ const deleteProduct = async (req, res, next) => {
         if (!deletedProduct) {
             await session.abortTransaction();
             session.endSession();
+            logger.warn(`Product not found for deletion: ${productId}`); // Log warning
             return res.status(404).json({ message: 'Product not found' });
         }
 
@@ -136,9 +153,11 @@ const deleteProduct = async (req, res, next) => {
         session.endSession();
 
         successHandler(res, null, 'Product deleted successfully');
+        logger.info(`Product deleted: ${productId}`); // Log deletion success
     } catch (err) {
         await session.abortTransaction();
         session.endSession();
+        logger.error(`Error deleting product: ${err.message}`); // Log the error
         next(err);
     }
 };
@@ -147,19 +166,20 @@ const deleteProduct = async (req, res, next) => {
 const getProductsByCategory = async (req, res, next) => {
     try {
         const categoryId = req.params.categoryId;
-        
+
         const query = categoryId && categoryId !== 'null' ? { category: categoryId } : { category: { $exists: false } };
-        
+
         const products = await Product.find(query)
             .populate('category')
             .populate('reviews');
 
         successHandler(res, products, 'Products retrieved successfully');
+        logger.info(`Products retrieved by category: ${categoryId}`); // Log retrieval by category
     } catch (err) {
+        logger.error(`Error retrieving products by category: ${err.message}`); // Log the error
         next(err);
     }
 };
-
 
 module.exports = {
     createProduct,

@@ -5,6 +5,7 @@ const successHandler = require('../middlewares/successHandler');
 const errorHandler = require('../middlewares/errorHandler');
 const { commissionQueue } = require('../queues/commissionQueue');
 const mongoose = require('mongoose');
+const logger = require('../config/logger');
 
 // Create an Order from Cart
 const createOrder = async (req, res, next) => {
@@ -16,6 +17,7 @@ const createOrder = async (req, res, next) => {
             .populate('products.product')
             .session(session);
         if (!cart || cart.products.length === 0) {
+            logger.warn(`User ${req.user._id} attempted to create an order with an empty cart`);
             return res.status(400).json({ success: false, message: 'Cart is empty' });
         }
 
@@ -26,6 +28,7 @@ const createOrder = async (req, res, next) => {
         for (let cartItem of cart.products) {
             const product = cartItem.product;
             if (!product || product.stock < cartItem.quantity) {
+                logger.warn(`Insufficient stock for product ${product.name} for user ${req.user._id}`);
                 return res.status(400).json({ 
                     success: false, 
                     message: `Product ${product.name} is not available in the requested quantity` 
@@ -47,6 +50,7 @@ const createOrder = async (req, res, next) => {
 
         // Save the order
         await order.save({ session });
+        logger.info(`Order created: ${order._id} for user ${req.user._id}`);
 
         // Reduce stock for each product in the order
         for (let cartItem of cart.products) {
@@ -64,6 +68,7 @@ const createOrder = async (req, res, next) => {
         successHandler(res, order, 'Order created successfully');
     } catch (err) {
         await session.abortTransaction();
+        logger.error(`Error creating order for user ${req.user._id}: ${err.message}`);
         errorHandler(err, req, res, next);
     } finally {
         session.endSession();
@@ -76,11 +81,14 @@ const getUserOrders = async (req, res, next) => {
         const orders = await Order.find({ user: req.user._id }).populate('products.product');
 
         if (orders.length === 0) {
+            logger.info(`No orders found for user ${req.user._id}`);
             return successHandler(res, null, 'No orders till now.');
         } else {
+            logger.info(`Retrieved ${orders.length} orders for user ${req.user._id}`);
             return successHandler(res, orders, 'Orders retrieved successfully');
         }
     } catch (err) {
+        logger.error(`Error retrieving orders for user ${req.user._id}: ${err.message}`);
         errorHandler(err, req, res, next);
     }
 };
@@ -98,25 +106,28 @@ const updateOrderStatus = async (req, res, next) => {
         };
 
         if (!(status in statusMap)) {
+            logger.warn(`Invalid status update attempt for order ${orderId} by user ${req.user._id}`);
             return res.status(400).json({ success: false, message: 'Invalid status' });
         }
 
         const order = await Order.findById(orderId);
-
         if (!order) {
+            logger.warn(`Order ${orderId} not found for user ${req.user._id}`);
             return res.status(404).json({ success: false, message: 'Order not found' });
         }
 
         if (order.user.toString() !== req.user._id.toString() && !req.user.isAdmin) {
+            logger.warn(`Unauthorized status update attempt for order ${orderId} by user ${req.user._id}`);
             return res.status(403).json({ success: false, message: 'Unauthorized' });
         }
 
         // Update order status
         order.status = statusMap[status];
         await order.save();
+        logger.info(`Order ${orderId} status updated to ${order.status} by user ${req.user._id}`);
 
         // If the order is delivered, queue the commission job
-        if (statusMap[status] === 'Delivered') {
+        if (order.status === 'Delivered') {
             commissionQueue.add({
                 userid: order.user,
                 points: order.totalPoints
@@ -125,6 +136,7 @@ const updateOrderStatus = async (req, res, next) => {
 
         successHandler(res, order, 'Order status updated successfully');
     } catch (err) {
+        logger.error(`Error updating order status for order ${req.body.orderId}: ${err.message}`);
         errorHandler(err, req, res, next);
     }
 };
@@ -136,24 +148,29 @@ const cancelOrder = async (req, res, next) => {
 
         const order = await Order.findById(orderId);
         if (!order) {
+            logger.warn(`Order ${orderId} not found for user ${req.user._id}`);
             return res.status(404).json({ success: false, message: 'Order not found' });
         }
 
         // Allow cancellation only by the user who created the order or by an admin
         if (order.user.toString() !== req.user._id.toString() && !req.user.isAdmin) {
+            logger.warn(`Unauthorized cancellation attempt for order ${orderId} by user ${req.user._id}`);
             return res.status(403).json({ success: false, message: 'Unauthorized' });
         }
 
         // Only allow cancellation if the order is not already delivered or cancelled
         if (order.status === 'Delivered' || order.status === 'Cancelled') {
+            logger.warn(`Cancellation attempt for order ${orderId} failed: Order is already ${order.status}`);
             return res.status(400).json({ success: false, message: `Order cannot be canceled as it is ${order.status}` });
         }
 
         order.status = 'Cancelled';
         await order.save();
+        logger.info(`Order ${orderId} canceled by user ${req.user._id}`);
 
         successHandler(res, order, 'Order canceled successfully');
     } catch (err) {
+        logger.error(`Error canceling order ${req.body.orderId}: ${err.message}`);
         errorHandler(err, req, res, next);
     }
 };
@@ -163,4 +180,4 @@ module.exports = {
     getUserOrders,
     updateOrderStatus,
     cancelOrder
-}
+};

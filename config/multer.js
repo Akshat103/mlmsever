@@ -1,6 +1,7 @@
 const multer = require('multer');
 const fs = require('fs');
 const path = require('path');
+const logger = require('./logger');
 
 // Define the upload directory
 const uploadDir = path.join(__dirname, '../uploads');
@@ -14,13 +15,15 @@ const storage = multer.diskStorage({
         cb(null, uploadDir);
     },
     filename: (req, file, cb) => {
-        cb(null, Date.now() + '-' + file.originalname);
+        const uniqueFilename = Date.now() + '-' + file.originalname;
+        cb(null, uniqueFilename);
+        logger.info(`Uploaded file: ${uniqueFilename}`); // Log successful upload
     }
 });
 
 const upload = multer({
     storage: storage,
-    limits: { fileSize: 1024 * 1024 * 2 },
+    limits: { fileSize: 1024 * 1024 * 2 }, // Limit file size to 2MB
     fileFilter: (req, file, cb) => {
         const filetypes = /jpeg|jpg|png/;
         const mimetype = filetypes.test(file.mimetype);
@@ -29,6 +32,8 @@ const upload = multer({
         if (mimetype && extname) {
             return cb(null, true);
         }
+        
+        logger.error(`File upload error: ${file.originalname} - Unsupported file type`); // Log error
         cb(new Error('Error: File type not supported!'));
     }
 });

@@ -3,6 +3,7 @@ const bcrypt = require('bcrypt');
 const { registrationQueue } = require('../queues/registrationQueue');
 const { v4: uuidv4 } = require('uuid');
 const successHandler = require('../middlewares/successHandler');
+const logger = require('../config/logger');
 
 // Generate 10-character alphanumeric userId
 const generateId = () => uuidv4().replace(/-/g, '').toUpperCase().slice(0, 10);
@@ -10,7 +11,7 @@ const generateId = () => uuidv4().replace(/-/g, '').toUpperCase().slice(0, 10);
 // Define job processor for registrationQueue
 registrationQueue.process(async (job) => {
     const { password, parentId, userId, ...rest } = job.data;
-    console.log(`Processing job with ID: ${job.id}, Parent ID: ${parentId}, Customer ID: ${userId}`);
+    logger.info(`Processing job with ID: ${job.id}, Parent ID: ${parentId}, Customer ID: ${userId}`);
 
     try {
         if (parentId) {
@@ -20,7 +21,8 @@ registrationQueue.process(async (job) => {
             }
 
             if (intendedParent.level === 15) {
-                return { message: "15 Levels Reached."}
+                logger.warn(`Customer ${userId} cannot be registered. 15 Levels Reached for parent ${parentId}.`);
+                return { message: "15 Levels Reached." };
             }
 
             const actualParent = await findNextAvailableSpot(parentId);
@@ -53,24 +55,33 @@ registrationQueue.process(async (job) => {
             await newCustomer.save();
         }
 
-        console.log(`Customer with userId ${userId} registered successfully.`);
+        logger.info(`Customer with userId ${userId} registered successfully.`);
         return { message: "Customer registered successfully.", userId };
     } catch (error) {
-        console.error("Error processing job:", error.message);
+        logger.error("Error processing job:", error.message);
         throw new Error("An error occurred while registering the customer: " + error.message);
     }
 });
 
 // Helper functions used in the controller
 async function findNextAvailableSpot(startNodeId) {
+    logger.info(`Finding next available spot starting from userId: ${startNodeId}`);
+
     const startNode = await User.findOne({ userId: startNodeId });
-    if (!startNode) return null;
+    if (!startNode) {
+        logger.warn(`Start node with userId: ${startNodeId} not found.`);
+        return null;
+    }
 
     async function recursiveSearch(nodeId) {
         const node = await User.findOne({ userId: nodeId });
-        if (!node) return null;
+        if (!node) {
+            logger.warn(`Node with userId: ${nodeId} not found.`);
+            return null;
+        }
 
         if (node.children.length < 3) {
+            logger.info(`Available spot found at userId: ${nodeId}`);
             return node;
         }
 
@@ -86,6 +97,7 @@ async function findNextAvailableSpot(startNodeId) {
             if (result) return result;
         }
 
+        logger.info(`No available spots found under userId: ${nodeId}`);
         return null;
     }
 
@@ -93,8 +105,10 @@ async function findNextAvailableSpot(startNodeId) {
 }
 
 async function updateAncestors(customerId) {
+    logger.info(`Updating ancestors for customerId: ${customerId}`);
+
     let current = await User.findOne({ userId: customerId });
-    
+
     while (current) {
         current.totalDescendantsCount = await getTotalDescendants(current.userId);
         current.childCount = current.children.length;
@@ -106,7 +120,7 @@ async function updateAncestors(customerId) {
                 const child = await User.findOne({ userId: childId });
                 return child.level;
             }));
-            
+
             current.level = Math.min(...childLevels) + 1;
             if (current.level > 15) {
                 current.level = 15;
@@ -116,18 +130,26 @@ async function updateAncestors(customerId) {
         }
 
         await current.save();
+        logger.info(`Updated userId: ${current.userId} with level: ${current.level}, totalDescendantsCount: ${current.totalDescendantsCount}`);
+
         current = await User.findOne({ userId: current.parent });
     }
 }
 
 async function getTotalDescendants(customerId) {
     const customer = await User.findOne({ userId: customerId });
-    if (!customer) return 0;
+    if (!customer) {
+        logger.warn(`Customer with userId: ${customerId} not found.`);
+        return 0;
+    }
 
     let count = customer.children.length;
+    logger.info(`Counting descendants for userId: ${customerId}, initial count: ${count}`);
+
     for (const childId of customer.children) {
         count += await getTotalDescendants(childId);
     }
+    logger.info(`Total descendants for userId: ${customerId} is ${count}`);
     return count;
 }
 
@@ -157,11 +179,13 @@ const createUser = async (req, res, next) => {
             .then(result => {
                 session.commitTransaction();
                 session.endSession();
+                logger.info(`User created successfully: ${userId}`);
                 res.status(201).json(result);
             })
             .catch(error => {
                 session.abortTransaction();
                 session.endSession();
+                logger.error(`Error processing registration for userId ${userId}: ${error.message}`);
                 res.status(500).json({
                     error: "An error occurred while processing your registration: " + error.message,
                 });
@@ -169,6 +193,7 @@ const createUser = async (req, res, next) => {
     } catch (error) {
         await session.abortTransaction();
         session.endSession();
+        logger.error(`Transaction failed while creating user: ${error.message}`);
         next(error);
     }
 };
@@ -177,8 +202,10 @@ const createUser = async (req, res, next) => {
 const getAllUsers = async (req, res, next) => {
     try {
         const users = await User.find().select('-password -__v');
+        logger.info('All users retrieved successfully');
         successHandler(res, users, 'Users retrieved successfully');
     } catch (err) {
+        logger.error(`Error retrieving users: ${err.message}`);
         next(err);
     }
 };
@@ -189,25 +216,25 @@ const getUserById = async (req, res, next) => {
         const user = await User.findOne({ userId: req.params.id }).select('-password -__v').populate("wallet");
 
         if (!user) {
+            logger.warn(`User not found: ${req.params.id}`);
             return res.status(404).json({ message: 'User not found' });
         }
 
         const wallet = user.wallet;
-
         wallet.resetMonthlyBalance();
 
         const isEligible = await wallet.isEligibleForWithdrawal();
-
         const withdrawableAmount = wallet.withdrawableAmount;
 
         await wallet.save();
 
-        successHandler(res, { 
-            user, 
-            withdrawableAmount, 
-            isEligibleForWithdrawal: isEligible 
+        successHandler(res, {
+            user,
+            withdrawableAmount,
+            isEligibleForWithdrawal: isEligible
         }, 'User retrieved successfully');
     } catch (err) {
+        logger.error(`Error retrieving userId ${req.params.id}: ${err.message}`);
         next(err);
     }
 };
@@ -216,19 +243,25 @@ const getUserById = async (req, res, next) => {
 const updateUser = async (req, res, next) => {
     try {
         const user = await User.findOneAndUpdate({ userId: req.params.id }, req.body, { new: true });
-        if (!user) return res.status(404).json({ message: 'User not found' });
+        if (!user) {
+            logger.warn(`User not found for update: ${req.params.id}`);
+            return res.status(404).json({ message: 'User not found' });
+        }
+        logger.info(`User updated successfully: ${req.params.id}`);
         successHandler(res, null, 'User updated successfully');
     } catch (err) {
+        logger.error(`Error updating userId ${req.params.id}: ${err.message}`);
         next(err);
     }
 };
 
+// Get user hierarchy
 const getHierarchy = async (req, res) => {
     try {
         const buildCustomerData = async (customerId) => {
             const customer = await User.findOne({ userId: customerId });
             if (!customer) {
-                console.warn(`Customer with userId ${customerId} not found`);
+                logger.warn(`Customer with userId ${customerId} not found`);
                 return null;
             }
 
@@ -265,16 +298,19 @@ const getHierarchy = async (req, res) => {
         const hierarchy = await Promise.all(rootCustomers.map(customer => buildCustomerData(customer.userId)));
         res.json({ hierarchy: hierarchy.filter(item => item !== null) });
     } catch (error) {
-        console.error("Error in /hierarchy route:", error);
+        logger.error("Error in /hierarchy route: " + error.message);
         res.status(500).json({ error: "An error occurred while fetching the hierarchy." });
     }
 };
 
+// Reset the system
 const resetSystem = async (req, res) => {
     try {
         await User.deleteMany({});
+        logger.info("System reset successfully.");
         res.json({ message: "System reset successfully." });
     } catch (error) {
+        logger.error("Error while resetting the system: " + error.message);
         res.status(500).json({ error: "An error occurred while resetting the system." });
     }
 };

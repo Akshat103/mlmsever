@@ -1,6 +1,7 @@
 const { commissionQueue } = require('./commissionQueue');
 const User = require('../models/User');
 const Wallet = require('../models/Wallet');
+const logger = require('../config/logger');
 
 const DIRECT_PLAN_COMMISSION = 0.2;
 const LEVEL_PLAN_COMMISSION = 0.05;
@@ -9,12 +10,12 @@ const LEVEL_PLAN_COMMISSION = 0.05;
 commissionQueue.process(async (job) => {
     const { userid, points } = job.data;
 
-    console.log(`Processing commission for User: ${userid}, Points: ${points}`);
+    logger.info(`Processing commission for User: ${userid}, Points: ${points}`);
 
     // Find the user
     const user = await User.findById(userid);
     if (!user) {
-        console.error(`User not found for ID: ${userid}`);
+        logger.error(`User not found for ID: ${userid}`);
         throw new Error('User not found');
     }
 
@@ -23,9 +24,9 @@ commissionQueue.process(async (job) => {
     if (userWallet) {
         await userWallet.addDirectIncome(points);
         await userWallet.save();
-        console.log(`Direct income of ${points} points added to user ${userid}'s wallet`);
+        logger.info(`Direct income of ${points} points added to user ${userid}'s wallet`);
     } else {
-        console.error(`Wallet not found for User ID: ${userid}`);
+        logger.error(`Wallet not found for User ID: ${userid}`);
     }
 
     // Direct Plan: 20% commission to the direct referrer
@@ -37,12 +38,12 @@ commissionQueue.process(async (job) => {
             if (referrerWallet) {
                 await referrerWallet.addDirectIncome(directCommission);
                 await referrerWallet.save();
-                console.log(`Direct commission of ${directCommission} points added to referrer ${referrer.userId}`);
+                logger.info(`Direct commission of ${directCommission} points added to referrer ${referrer.userId}`);
             } else {
-                console.error(`Referrer wallet not found for ID: ${referrer.userId}`);
+                logger.error(`Referrer wallet not found for ID: ${referrer.userId}`);
             }
         } else {
-            console.error(`Referrer not found for referredBy ID: ${user.referredBy}`);
+            logger.error(`Referrer not found for referredBy ID: ${user.referredBy}`);
         }
     }
 
@@ -54,7 +55,7 @@ commissionQueue.process(async (job) => {
 
         // Skip if the parent is the direct referrer
         if (parent.userId === user.referredBy) {
-            console.log(`Skipping parent ${parent.userId} as they are the direct referrer`);
+            logger.info(`Skipping parent ${parent.userId} as they are the direct referrer`);
             currentUser = parent;
             continue;
         }
@@ -64,14 +65,14 @@ commissionQueue.process(async (job) => {
         if (parentWallet) {
             await parentWallet.addLevelIncome(levelCommission);
             await parentWallet.save();
-            console.log(`Level commission of ${levelCommission} points added to parent ${parent.userId}`);
+            logger.info(`Level commission of ${levelCommission} points added to parent ${parent.userId}`);
         } else {
-            console.error(`Parent wallet not found for ID: ${parent.userId}`);
+            logger.error(`Parent wallet not found for ID: ${parent.userId}`);
         }
 
         // Move to the next parent in the hierarchy
         currentUser = parent;
     }
 
-    console.log(`Commission processing completed for User: ${userid}`);
+    logger.info(`Commission processing completed for User: ${userid}`);
 });
