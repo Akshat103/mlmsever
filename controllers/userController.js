@@ -225,7 +225,7 @@ const createUser = async (req, res, next) => {
         session.endSession();
 
         // Handle duplicate key error (like email already exists)
-        if (error.code === 11000) { 
+        if (error.code === 11000) {
             logger.error(`Duplicate key error: ${error.message}`);
             if (!responseSent) {
                 return res.status(400).json({
@@ -376,11 +376,76 @@ const resetSystem = async (req, res) => {
     }
 };
 
+// Get User's Wallet Details
+const getWalletDetails = async (req, res) => {
+    try {
+        const user = await User.findOne({userId: req.params.userId}).populate('wallet');
+        if (!user) {
+            return res.status(404).json({ error: 'User not found' });
+        }
+        successHandler(res, {wallet: user.wallet}, null);
+    } catch (error) {
+        console.log(error)
+        res.status(500).json({ error: 'Server error' });
+    }
+};
+
+// Get User's Club Rank
+const getClubRank = async (req, res) => {
+    try {
+        const user = await User.findOne({userId: req.params.userId});
+        if (!user) {
+            return res.status(404).json({ error: 'User not found' });
+        }
+        successHandler(res, { club: user.club }, null);
+    } catch (error) {
+        res.status(500).json({ error: 'Server error' });
+    }
+};
+
+// Get User's Rank Details
+const getRankDetails = async (req, res) => {
+    try {
+        const user = await User.findOne({userId: req.params.userId});
+        if (!user) {
+            return res.status(404).json({ error: 'User not found' });
+        }
+        successHandler(res, { rank: user.rank, maxMonthlyWithdrawal: user.maxMonthlyWithdrawal }, null);
+    } catch (error) {
+        res.status(500).json({ error: 'Server error' });
+    }
+};
+
+// Get Referred Customers
+const getReferredCustomers = async (req, res) => {
+    try {
+        const user = await User.findOne({userId:req.params.userId});
+        if (!user) {
+            return res.status(404).json({ error: 'User not found' });
+        }
+
+        const referredCustomerDetails = await User.find({
+            userId: { $in: user.referredCustomers }
+        }).select('name');
+
+        const referredCustomerNames = referredCustomerDetails.map(customer => customer.name);
+
+        successHandler(res, {referredCustomer: referredCustomerNames}, null);
+    } catch (error) {
+        res.status(500).json({ error: 'Server error' });
+    }
+};
+
+
 module.exports = {
     createUser,
     getAllUsers,
     getUserById,
     updateUser,
     getHierarchy,
-    resetSystem
+    resetSystem,
+    getWalletDetails,
+    getClubRank,
+    getRankDetails,
+    getReferredCustomers
 };

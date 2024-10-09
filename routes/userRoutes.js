@@ -12,6 +12,10 @@ router.get('/hierarchy', userController.getHierarchy);
 // router.post('/reset', userController.resetSystem);
 router.get('/:id', authenticate, userController.getUserById);
 router.put('/:id', authenticate, userController.updateUser);
+router.get('/:userId/wallet', authenticate, userController.getWalletDetails);
+router.get('/:userId/club', authenticate, userController.getClubRank);
+router.get('/:userId/rank', authenticate, userController.getRankDetails);
+router.get('/:userId/referredCustomers', authenticate, userController.getReferredCustomers);
 
 // Auth routes
 router.post('/login', authController.loginUser);
