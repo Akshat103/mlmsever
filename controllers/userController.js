@@ -167,15 +167,14 @@ const createUser = async (req, res, next) => {
         const { parentId, password, isAdmin, adminKey, ...rest } = req.body;
 
         // Password validation
-        if (password.length < 8 || !/^(?=.*[a-zA-Z])(?=.*\d)[a-zA-Z\d]+$/.test(password)) {
-            throw new Error('Password must be alphanumeric and at least 8 characters long.');
+        if (password.length < 8 ) {
+            throw new Error('Password must be least 8 characters long.');
         }
 
         const hashedPassword = await bcrypt.hash(password, 10);
         const userId = generateId();
-
         // Decide whether to create an Admin or a User
-        if (isAdmin && adminKey === process.env.ADMIN_KEY) {
+        if (adminKey === process.env.ADMIN_KEY) {
             // Create an Admin
             const admin = new Admin({
                 ...rest,
