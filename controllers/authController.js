@@ -47,7 +47,7 @@ const loginUser = async (req, res, next) => {
 
         const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, { expiresIn: '12h' });
         logger.info(`User logged in successfully: ${user.email || user.phoneNumber}`);
-        return successHandler(res, { token, userId: user.userId });
+        return successHandler(res, { token, userId: user.userId, id:user._id });
     } catch (err) {
         logger.error(`Error during login: ${err.message}`);
         return next(err);
