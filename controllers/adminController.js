@@ -2,6 +2,7 @@ const Admin = require('../models/Admin');
 const logger = require('../config/logger');
 const successHandler = require('../middlewares/successHandler');
 const dotenv = require('dotenv');
+const errorHandler = require('../middlewares/errorHandler');
 dotenv.config();
 
 // Update Admin
@@ -26,7 +27,7 @@ const updateAdmin = async (req, res, next) => {
         successHandler(res, updatedAdmin ,"Admin updated successfully")
     } catch (err) {
         logger.error(`Error updating admin: ${err.message}`);
-        next(err);
+        errorHandler(err, req, res, next);
     }
 };
 
@@ -46,7 +47,7 @@ const deleteAdmin = async (req, res, next) => {
         successHandler(res, null, 'Admin deleted successfully');
     } catch (err) {
         logger.error(`Error deleting admin: ${err.message}`);
-        next(err);
+        errorHandler(err, req, res, next);
     }
 };
 
@@ -63,7 +64,7 @@ const getAllAdmins = async (req, res, next) => {
         successHandler(res, admins, "Retrieved all admins successfully");
     } catch (err) {
         logger.error(`Error retrieving admins: ${err.message}`);
-        next(err);
+        errorHandler(err, req, res, next);
     }
 };
 

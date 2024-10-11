@@ -15,6 +15,7 @@ const orderRoutes = require('./routes/orderRoutes');
 const rewardThresholdRoutes = require('./routes/rewardThresholdRoutes');
 const rewardRoutes = require('./routes/rewardRoutes');
 const adminRoutes = require('./routes/adminRoutes');
+const bankDetailsRoutes = require('./routes/bankDetailsRoutes');
 const { setQueues: setRegistrationQueue } = require('./queues/registrationQueue');
 const { setCommissionQueue } = require('./queues/commissionQueue');
 const { router } = require('bull-board');
@@ -30,6 +31,7 @@ connectDB();
 // Middleware
 app.use(cors());
 app.use(bodyParser.json());
+app.use(errorHandler);
 
 // Log incoming requests
 app.use((req, res, next) => {
@@ -43,6 +45,7 @@ setCommissionQueue();
 app.use('/admin/queues', router);
 
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+app.use('/assets', express.static(path.join(__dirname, 'assets')));
 
 app.use('/api/users', userRoutes);
 app.use('/api/products', productRoutes);
@@ -54,6 +57,7 @@ app.use('/api/orders', orderRoutes);
 app.use('/api/manage-reward', rewardThresholdRoutes);
 app.use('/api/rewards', rewardRoutes);
 app.use('/api/admins', adminRoutes);
+app.use('/api/bank-details', bankDetailsRoutes);
 
 app.get('/api', (req, res) => {
     res.send('Welcome to MLM E-commerce.');

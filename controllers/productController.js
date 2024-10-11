@@ -4,6 +4,7 @@ const Category = require('../models/Category');
 const Review = require('../models/Review');
 const successHandler = require('../middlewares/successHandler');
 const logger = require('../config/logger'); // Adjust the path as necessary
+const errorHandler = require('../middlewares/errorHandler');
 
 // Create a new product
 const createProduct = async (req, res, next) => {
@@ -11,14 +12,20 @@ const createProduct = async (req, res, next) => {
     session.startTransaction();
 
     try {
-        const images = req.files.map(file => file.path);
+        if (!req.fileUrls || req.fileUrls.length === 0) {
+            throw new Error("No file URLs provided.");
+        }
+        const images = req.fileUrls.map(file => file);
+        
         const newProduct = new Product({ ...req.body, images });
         await newProduct.save({ session });
+        
         await Category.findByIdAndUpdate(
             req.body.category,
             { $push: { products: newProduct._id } },
             { new: true, session }
         );
+        
         await session.commitTransaction();
         session.endSession();
         successHandler(res, null, 'Product created successfully');
@@ -27,9 +34,10 @@ const createProduct = async (req, res, next) => {
         await session.abortTransaction();
         session.endSession();
         logger.error(`Error creating product: ${err.message}`); // Log the error
-        next(err);
+        errorHandler(err, req, res, next);
     }
 };
+
 
 // Get all products
 const getAllProducts = async (req, res, next) => {
@@ -39,7 +47,7 @@ const getAllProducts = async (req, res, next) => {
         logger.info('All products retrieved successfully'); // Log retrieval success
     } catch (err) {
         logger.error(`Error retrieving products: ${err.message}`); // Log the error
-        next(err);
+        errorHandler(err, req, res, next);
     }
 };
 
@@ -55,7 +63,7 @@ const getProductById = async (req, res, next) => {
         logger.info(`Product retrieved: ${req.params.id}`); // Log retrieval
     } catch (err) {
         logger.error(`Error retrieving product: ${err.message}`); // Log the error
-        next(err);
+        errorHandler(err, req, res, next);
     }
 };
 
@@ -117,7 +125,7 @@ const updateProduct = async (req, res, next) => {
         await session.abortTransaction();
         session.endSession();
         logger.error(`Error updating product: ${err.message}`); // Log the error
-        next(err);
+        errorHandler(err, req, res, next);
     }
 };
 
@@ -158,7 +166,7 @@ const deleteProduct = async (req, res, next) => {
         await session.abortTransaction();
         session.endSession();
         logger.error(`Error deleting product: ${err.message}`); // Log the error
-        next(err);
+        errorHandler(err, req, res, next);
     }
 };
 
@@ -177,7 +185,7 @@ const getProductsByCategory = async (req, res, next) => {
         logger.info(`Products retrieved by category: ${categoryId}`); // Log retrieval by category
     } catch (err) {
         logger.error(`Error retrieving products by category: ${err.message}`); // Log the error
-        next(err);
+        errorHandler(err, req, res, next);
     }
 };
 

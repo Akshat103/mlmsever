@@ -2,6 +2,8 @@ const Wallet = require('./Wallet');
 const mongoose = require('mongoose');
 const validator = require('validator');
 
+const SERVER = process.env.SERVER || 'localhost';
+
 const rankDetails = {
     3: { rank: 'Star', maxWithdrawal: 10000 },
     10: { rank: 'Silver', maxWithdrawal: 50000 },
@@ -40,6 +42,10 @@ const UserSchema = new mongoose.Schema({
     password: {
         type: String,
         required: true
+    },
+    profile: {
+        type: String,
+        default: `${SERVER}/assets/user-profile.jpg`,
     },
     userId: {
         type: String,

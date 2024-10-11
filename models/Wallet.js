@@ -2,6 +2,7 @@ const mongoose = require('mongoose');
 const RewardThreshold = require('./RewardThreshold');
 const Reward = require('./Reward');
 const GlobalPointPool = require('./GlobalPointPool');
+const logger = require('../config/logger');
 
 const TransactionSchema = new mongoose.Schema({
     amount: {
@@ -134,6 +135,8 @@ WalletSchema.methods.addDirectIncome = async function (amount) {
         await this.updateGlobalPointPool(amount);
         await this.checkForReward();
         await this.assignClubMembership();
+
+        await this.save();
     }
 };
 
@@ -157,14 +160,22 @@ WalletSchema.methods.addLevelIncome = async function (amount) {
         await this.updateGlobalPointPool(amount);
         await this.checkForReward();
         await this.assignClubMembership();
+
+        await this.save();
     }
 };
 
-// Method to update the global point pool for the current month
 WalletSchema.methods.updateGlobalPointPool = async function (amount) {
-    const globalPointPool = await GlobalPointPool.findOrCreateForCurrentMonth();
-    globalPointPool.totalMonthlyPoints += amount;
-    await globalPointPool.save();
+    try {
+        const globalPointPool = await GlobalPointPool.findOrCreateForCurrentMonth();
+        globalPointPool.totalMonthlyPoints += amount;
+        
+        logger.info(`Global point pool updated: ${JSON.stringify(globalPointPool.totalMonthlyPoints)}`);
+
+        await globalPointPool.save();
+    } catch (error) {
+        logger.error(`Error updating global point pool: ${error.message}`);
+    }
 };
 
 WalletSchema.methods.checkForReward = async function () {

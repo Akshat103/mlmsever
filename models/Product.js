@@ -36,7 +36,7 @@ const ProductSchema = new mongoose.Schema({
         },
         required: true
     },
-    activatonProduct: {
+    activationProduct: {
         type: Boolean,
         default: false
     }

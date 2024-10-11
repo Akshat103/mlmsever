@@ -2,160 +2,15 @@ const mongoose = require('mongoose');
 const User = require('../models/User');
 const Admin = require('../models/Admin');
 const bcrypt = require('bcrypt');
-const { registrationQueue } = require('../queues/registrationQueue');
 const { v4: uuidv4 } = require('uuid');
 const successHandler = require('../middlewares/successHandler');
 const logger = require('../config/logger');
 const dotenv = require('dotenv');
+const errorHandler = require('../middlewares/errorHandler');
 dotenv.config();
 
 // Generate 10-character alphanumeric userId
 const generateId = () => uuidv4().replace(/-/g, '').toUpperCase().slice(0, 10);
-
-// Define job processor for registrationQueue
-registrationQueue.process(async (job) => {
-    const { password, parentId, userId, ...rest } = job.data;
-    logger.info(`Processing job with ID: ${job.id}, Parent ID: ${parentId}, Customer ID: ${userId}`);
-
-    try {
-        if (parentId) {
-            const intendedParent = await User.findOne({ userId: parentId });
-            if (!intendedParent) {
-                throw new Error(`Parent with userId ${parentId} not found.`);
-            }
-
-            if (intendedParent.level === 15) {
-                logger.warn(`Customer ${userId} cannot be registered. 15 Levels Reached for parent ${parentId}.`);
-                return { message: "15 Levels Reached." };
-            }
-
-            const actualParent = await findNextAvailableSpot(parentId);
-            if (!actualParent) {
-                throw new Error(`Could not find space to add ${userId}.`);
-            }
-
-            const newCustomer = new User({
-                ...rest,
-                password,
-                userId,
-                parent: actualParent.userId,
-                referredBy: parentId,
-            });
-            await newCustomer.save();
-
-            actualParent.children.push(userId);
-            intendedParent.referredCustomers.push(userId);
-            await actualParent.save();
-            await intendedParent.save();
-
-            await updateAncestors(actualParent.userId);
-        } else {
-            const newCustomer = new User({
-                ...rest,
-                password,
-                userId,
-                referredBy: null,
-            });
-            await newCustomer.save();
-        }
-
-        logger.info(`Customer with userId ${userId} registered successfully.`);
-        return { message: "Customer registered successfully.", userId };
-    } catch (error) {
-        logger.error("Error processing job:", error.message);
-        throw new Error("An error occurred while registering the customer: " + error.message);
-    }
-});
-
-// Helper functions used in the controller
-async function findNextAvailableSpot(startNodeId) {
-    logger.info(`Finding next available spot starting from userId: ${startNodeId}`);
-
-    const startNode = await User.findOne({ userId: startNodeId });
-    if (!startNode) {
-        logger.warn(`Start node with userId: ${startNodeId} not found.`);
-        return null;
-    }
-
-    async function recursiveSearch(nodeId) {
-        const node = await User.findOne({ userId: nodeId });
-        if (!node) {
-            logger.warn(`Node with userId: ${nodeId} not found.`);
-            return null;
-        }
-
-        if (node.children.length < 3) {
-            logger.info(`Available spot found at userId: ${nodeId}`);
-            return node;
-        }
-
-        const sortedChildren = await Promise.all(node.children.map(async (childId) => {
-            const child = await User.findOne({ userId: childId });
-            return { userId: childId, descendantCount: child.totalDescendantsCount };
-        }));
-
-        sortedChildren.sort((a, b) => a.descendantCount - b.descendantCount);
-
-        for (const child of sortedChildren) {
-            const result = await recursiveSearch(child.userId);
-            if (result) return result;
-        }
-
-        logger.info(`No available spots found under userId: ${nodeId}`);
-        return null;
-    }
-
-    return recursiveSearch(startNodeId);
-}
-
-async function updateAncestors(customerId) {
-    logger.info(`Updating ancestors for customerId: ${customerId}`);
-
-    let current = await User.findOne({ userId: customerId });
-
-    while (current) {
-        current.totalDescendantsCount = await getTotalDescendants(current.userId);
-        current.childCount = current.children.length;
-        current.isComplete = current.children.length === 3;
-        current.referredCustomersCount = current.referredCustomers.length;
-
-        if (current.children.length === 3) {
-            const childLevels = await Promise.all(current.children.map(async (childId) => {
-                const child = await User.findOne({ userId: childId });
-                return child.level;
-            }));
-
-            current.level = Math.min(...childLevels) + 1;
-            if (current.level > 15) {
-                current.level = 15;
-            }
-        } else {
-            current.level = 0;
-        }
-
-        await current.save();
-        logger.info(`Updated userId: ${current.userId} with level: ${current.level}, totalDescendantsCount: ${current.totalDescendantsCount}`);
-
-        current = await User.findOne({ userId: current.parent });
-    }
-}
-
-async function getTotalDescendants(customerId) {
-    const customer = await User.findOne({ userId: customerId });
-    if (!customer) {
-        logger.warn(`Customer with userId: ${customerId} not found.`);
-        return 0;
-    }
-
-    let count = customer.children.length;
-    logger.info(`Counting descendants for userId: ${customerId}, initial count: ${count}`);
-
-    for (const childId of customer.children) {
-        count += await getTotalDescendants(childId);
-    }
-    logger.info(`Total descendants for userId: ${customerId} is ${count}`);
-    return count;
-}
 
 // Create a new user
 const createUser = async (req, res, next) => {
@@ -167,7 +22,7 @@ const createUser = async (req, res, next) => {
         const { parentId, password, isAdmin, adminKey, ...rest } = req.body;
 
         // Password validation
-        if (password.length < 8 ) {
+        if (password.length < 8) {
             throw new Error('Password must be least 8 characters long.');
         }
 
@@ -190,34 +45,41 @@ const createUser = async (req, res, next) => {
             responseSent = true;
             return res.status(201).json({ success: true, message: 'Admin created successfully', adminId: admin._id });
         } else {
-            // Create a User
-            const job = await registrationQueue.add({
-                ...rest,
-                password: hashedPassword,
-                parentId,
-                userId,
-            });
+            if (parentId) {
+                const parentUser = await User.findOne({ userId: parentId }).session(session);
+                if (!parentUser) {
+                    throw new Error('Referrer user does not exist.');
+                }
 
-            job.finished()
-                .then(result => {
-                    if (!responseSent) {
-                        session.commitTransaction();
-                        session.endSession();
-                        logger.info(`User created successfully: ${userId}`);
-                        res.status(201).json(result);
-                    }
-                })
-                .catch(error => {
-                    if (!responseSent) {
-                        session.abortTransaction();
-                        session.endSession();
-                        logger.error(`Error processing registration for userId ${userId}: ${error.message}`);
-                        res.status(500).json({
-                            success: false,
-                            error: "An error occurred while processing your registration: " + error.message,
-                        });
-                    }
+                if (!parentUser.isActive) {
+                    throw new Error('Referrer user is not active.');
+                }
+
+                const newUser = new User({
+                    ...rest,
+                    userId,
+                    password: hashedPassword,
+                    referredBy: parentUser.userId,
                 });
+
+                await newUser.save({ session });
+                await session.commitTransaction();
+                logger.info(`User created successfully: ${newUser._id}`);
+                responseSent = true;
+                return res.status(201).json({ success: true, message: 'User created successfully', userId: newUser.userId, id: newUser._id });
+            } else {
+                const newUser = new User({
+                    ...rest,
+                    userId,
+                    password: hashedPassword
+                });
+
+                await newUser.save({ session });
+                await session.commitTransaction();
+                logger.info(`User created successfully: ${newUser.userId}`);
+                responseSent = true;
+                return res.status(201).json({ success: true, message: 'User created successfully', userId: newUser.userId, id: newUser._id });
+            }
         }
     } catch (error) {
         await session.abortTransaction();
@@ -241,6 +103,16 @@ const createUser = async (req, res, next) => {
                 return res.status(400).json({
                     success: false,
                     error: `Validation failed: ${Object.values(error.errors).map(err => err.message).join(', ')}`,
+                });
+            }
+        }
+
+        if (error) {
+            logger.error(`Transaction failed while creating user/admin: ${error.message}`);
+            if (!responseSent) {
+                return res.status(400).json({
+                    success: false,
+                    error: error.message,
                 });
             }
         }
@@ -311,7 +183,7 @@ const updateUser = async (req, res, next) => {
         successHandler(res, null, 'User updated successfully');
     } catch (err) {
         logger.error(`Error updating userId ${req.params.id}: ${err.message}`);
-        next(err);
+        errorHandler(err, req, res, next);
     }
 };
 
@@ -378,11 +250,11 @@ const resetSystem = async (req, res) => {
 // Get User's Wallet Details
 const getWalletDetails = async (req, res) => {
     try {
-        const user = await User.findOne({userId: req.params.userId}).populate('wallet');
+        const user = await User.findOne({ userId: req.params.userId }).populate('wallet');
         if (!user) {
             return res.status(404).json({ error: 'User not found' });
         }
-        successHandler(res, {wallet: user.wallet}, null);
+        successHandler(res, { wallet: user.wallet }, null);
     } catch (error) {
         console.log(error)
         res.status(500).json({ error: 'Server error' });
@@ -392,7 +264,7 @@ const getWalletDetails = async (req, res) => {
 // Get User's Club Rank
 const getClubRank = async (req, res) => {
     try {
-        const user = await User.findOne({userId: req.params.userId});
+        const user = await User.findOne({ userId: req.params.userId });
         if (!user) {
             return res.status(404).json({ error: 'User not found' });
         }
@@ -405,7 +277,7 @@ const getClubRank = async (req, res) => {
 // Get User's Rank Details
 const getRankDetails = async (req, res) => {
     try {
-        const user = await User.findOne({userId: req.params.userId});
+        const user = await User.findOne({ userId: req.params.userId });
         if (!user) {
             return res.status(404).json({ error: 'User not found' });
         }
@@ -418,7 +290,7 @@ const getRankDetails = async (req, res) => {
 // Get Referred Customers
 const getReferredCustomers = async (req, res) => {
     try {
-        const user = await User.findOne({userId:req.params.userId});
+        const user = await User.findOne({ userId: req.params.userId });
         if (!user) {
             return res.status(404).json({ error: 'User not found' });
         }
@@ -429,12 +301,41 @@ const getReferredCustomers = async (req, res) => {
 
         const referredCustomerNames = referredCustomerDetails.map(customer => customer.name);
 
-        successHandler(res, {referredCustomer: referredCustomerNames}, null);
+        successHandler(res, { referredCustomer: referredCustomerNames }, null);
     } catch (error) {
         res.status(500).json({ error: 'Server error' });
     }
 };
 
+const updateUserProfile = async (req, res) => {
+    try {
+        const userId = req.params.userId;
+        const serverIp = process.env.SERVER || 'localhost';
+
+        if (!req.file) {
+            return res.status(400).json({ message: 'No file uploaded' });
+        }
+
+        const encodedFilename = encodeURIComponent(req.file.filename);
+        const profileUrl = `${serverIp}/uploads/${encodedFilename}`;
+
+        const updatedUser = await User.findOneAndUpdate(
+            { userId: userId },
+            { profile: profileUrl },
+            { new: true, runValidators: true }
+        );
+
+        if (!updatedUser) {
+            return res.status(404).json({ message: 'User not found' });
+        }
+
+        logger.info(`Profile updated for user: ${userId}`);
+        res.status(200).json({ message: 'Profile updated successfully', user: updatedUser });
+    } catch (error) {
+        logger.error(`Error updating user profile: ${error.message}`);
+        res.status(500).json({ message: 'An error occurred while updating the user profile', error: error.message });
+    }
+};
 
 module.exports = {
     createUser,
@@ -446,5 +347,6 @@ module.exports = {
     getWalletDetails,
     getClubRank,
     getRankDetails,
-    getReferredCustomers
+    getReferredCustomers,
+    updateUserProfile
 };

@@ -5,11 +5,11 @@ const TokenBlacklist = require('../models/TokenBlacklist');
 const successHandler = require('../middlewares/successHandler');
 const logger = require('../config/logger');
 const Admin = require('../models/Admin');
+const errorHandler = require('../middlewares/errorHandler');
 
 const loginUser = async (req, res, next) => {
     const { identifier, password } = req.body;
     try {
-        
         if (!identifier || !password) {
             logger.warn('Login attempt failed: Missing identifier or password.');
             return res.status(400).json({ success: false, message: 'Identifier and password are required.' });
@@ -21,9 +21,10 @@ const loginUser = async (req, res, next) => {
         if (admin) {
             const isMatch = await bcrypt.compare(password, admin.password);
             if (!isMatch) {
-                logger.warn(`Login attempt failed: Invalid credentials for user: ${admin.email}`);
-                return next(new Error('Invalid credentials'));
+                logger.warn(`Login attempt failed: Invalid credentials for admin: ${admin.email}`);
+                return res.status(401).json({ success: false, message: 'Invalid credentials' });
             }
+
             const token = jwt.sign({ userId: admin._id }, process.env.JWT_SECRET, { expiresIn: '12h' });
             logger.info(`Admin logged in successfully: ${admin.email}`);
             return successHandler(res, { token, userId: admin._id });
@@ -36,21 +37,21 @@ const loginUser = async (req, res, next) => {
 
         if (!user) {
             logger.warn(`Login attempt failed: User not found for identifier: ${identifier}`);
-            return next(new Error('User not found'));
+            return res.status(404).json({ success: false, message: 'User not found' });
         }
 
         const isMatch = await bcrypt.compare(password, user.password);
         if (!isMatch) {
             logger.warn(`Login attempt failed: Invalid credentials for user: ${user.email || user.phoneNumber}`);
-            return next(new Error('Invalid credentials'));
+            return res.status(401).json({ success: false, message: 'Invalid credentials' });
         }
 
         const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, { expiresIn: '12h' });
         logger.info(`User logged in successfully: ${user.email || user.phoneNumber}`);
-        return successHandler(res, { token, userId: user.userId, id:user._id });
+        return successHandler(res, { token, userId: user.userId, id: user._id });
     } catch (err) {
         logger.error(`Error during login: ${err.message}`);
-        return next(err);
+        return errorHandler(err, req, res, next);
     }
 };
 
@@ -81,7 +82,7 @@ const logoutUser = async (req, res, next) => {
         successHandler(res, null, 'Logout successful');
     } catch (err) {
         logger.error(`Error during logout: ${err.message}`);
-        next(err);
+        errorHandler(err, req, res, next);
     }
 };
 

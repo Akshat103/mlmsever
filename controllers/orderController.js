@@ -7,6 +7,7 @@ const { commissionQueue } = require('../queues/commissionQueue');
 const mongoose = require('mongoose');
 const logger = require('../config/logger');
 const User = require('../models/User');
+const { registrationQueue } = require('../queues/processRegistrationQueue');
 
 // Create an Order from Cart
 const createOrder = async (req, res, next) => {
@@ -94,11 +95,25 @@ const getUserOrders = async (req, res, next) => {
     }
 };
 
+async function checkActivationProduct(order) {
+    for (const item of order.products) {
+        const product = await Product.findById(item.product);
+
+        if (product.activationProduct) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 // Update Order Status
 const updateOrderStatus = async (req, res, next) => {
+    const session = await mongoose.startSession();
+    session.startTransaction();
+
     try {
         const { orderId, status } = req.body;
-
         const statusMap = {
             0: 'Pending',
             1: 'Shipped',
@@ -108,52 +123,117 @@ const updateOrderStatus = async (req, res, next) => {
 
         if (!(status in statusMap)) {
             logger.warn(`Invalid status update attempt for order ${orderId} by user ${req.user._id}`);
+            await session.abortTransaction();
+            session.endSession();
             return res.status(400).json({ success: false, message: 'Invalid status' });
         }
 
-        const order = await Order.findById(orderId).populate('products');
+        const order = await Order.findById(orderId).populate('products').session(session);
         if (!order) {
             logger.warn(`Order ${orderId} not found for user ${req.user._id}`);
+            await session.abortTransaction();
+            session.endSession();
             return res.status(404).json({ success: false, message: 'Order not found' });
         }
 
         if (order.user.toString() !== req.user._id.toString() && !req.user.isAdmin) {
             logger.warn(`Unauthorized status update attempt for order ${orderId} by user ${req.user._id}`);
+            await session.abortTransaction();
+            session.endSession();
             return res.status(403).json({ success: false, message: 'Unauthorized' });
         }
 
         // Update order status
         order.status = statusMap[status];
-        await order.save();
+        await order.save({ session });
         logger.info(`Order ${orderId} status updated to ${order.status} by user ${req.user._id}`);
 
         // If the order is delivered, check for activation conditions
         if (order.status === 'Delivered') {
-            const activationProductExists = order.products.some(product => product.activatonProduct === true);
+            const activationProductExists = await checkActivationProduct(order);
+            const user = await User.findById(order.user).session(session);
 
-            if (activationProductExists && !req.user.isActive) {
-                const user = await User.findById(req.user._id);
-                if (user) {
-                    user.isActive = true;
-                    await user.save();
-                    logger.info(`User ${req.user._id} activated due to activation product purchase.`);
-                }
+            if (!user) {
+                logger.error(`User not found for ID: ${user.userid}`);
+                throw new Error('User not found');
             }
 
-            // Queue the commission job
-            commissionQueue.add({
-                userid: order.user,
-                points: order.totalPoints
-            });
+            if (activationProductExists && !user.isActive) {
+                if (user.referredBy) {
+                    const job = await registrationQueue.add({
+                        parentId: user.referredBy,
+                        userId: user.userId,
+                    });
+
+                    try {
+                        const registrationResult = await job.finished();
+                        logger.info(`User created successfully: ${user.userId}`);
+
+                        // Start the commission job only after the registration job is completed
+                        await commissionQueue.add({
+                            user: user,
+                            points: order.totalPoints,
+                        });
+
+                        // Commit the transaction after all operations are complete
+                        await session.commitTransaction();
+                        session.endSession();
+
+                        return successHandler(res, { registrationResult, order }, 'Order status updated successfully')
+                    } catch (error) {
+                        logger.error(`Error processing registration for userId ${user.userId}: ${error.message}`);
+
+                        // Only abort if the transaction hasn't been committed
+                        if (session.inTransaction()) {
+                            await session.abortTransaction();
+                        }
+                        session.endSession();
+
+                        return res.status(500).json({
+                            success: false,
+                            error: "An error occurred while processing your registration: " + error.message,
+                        });
+                    }
+                } else {
+                    user.isActive = true;
+                    await user.save({ session });
+                    await session.commitTransaction();
+                    session.endSession();
+
+                    // Queue the commission job
+                    await commissionQueue.add({
+                        user: user,
+                        points: order.totalPoints
+                    });
+
+
+                    logger.info(`User ${req.user._id} activated due to activation product purchase.`);
+                    return successHandler(res, order, 'Order status updated successfully');
+                }
+            } else {
+                // If no registration is needed, just commit the transaction for commission job
+                await commissionQueue.add({
+                    user: user,
+                    points: order.totalPoints
+                });
+
+                await session.commitTransaction();
+                session.endSession();
+
+                return successHandler(res, order, 'Order status updated successfully');
+            }
         }
 
-        successHandler(res, order, 'Order status updated successfully');
+        await session.commitTransaction();
+        session.endSession();
+        return successHandler(res, order, 'Order status updated successfully');
     } catch (err) {
+        await session.abortTransaction();
+        session.endSession();
         logger.error(`Error updating order status for order ${req.body.orderId}: ${err.message}`);
-        errorHandler(err, req, res, next);
+        return errorHandler(err, req, res, next);
     }
 };
-
 
 // Cancel Order
 const cancelOrder = async (req, res, next) => {

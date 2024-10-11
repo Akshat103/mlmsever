@@ -1,5 +1,5 @@
 const express = require('express');
-const upload = require('../config/multer');
+const { upload, multipleUpload } = require('../config/multer');
 const {
     createProduct,
     getAllProducts,
@@ -13,7 +13,7 @@ const authenticate = require('../middlewares/authMiddleware');
 const isAdmin = require('../middlewares/isAdmin');
 
 // Create a new product with image upload
-router.post('/add', authenticate, isAdmin, upload.array('images', 3), createProduct);
+router.post('/add', authenticate, isAdmin, upload.array('images', 3), multipleUpload, createProduct);
 
 // Get all products
 router.get('/get-all', authenticate, getAllProducts);
@@ -22,7 +22,7 @@ router.get('/get-all', authenticate, getAllProducts);
 router.get('/:id', authenticate, getProductById);
 
 // Update a product with image upload
-router.put('/:id', authenticate, upload.array('images', 3), updateProduct);
+router.put('/:id', authenticate, upload.array('images', 3), multipleUpload, updateProduct);
 
 // Delete a product
 router.delete('/:id', authenticate, isAdmin, deleteProduct);

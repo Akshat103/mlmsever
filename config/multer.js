@@ -17,7 +17,9 @@ const storage = multer.diskStorage({
     filename: (req, file, cb) => {
         const uniqueFilename = Date.now() + '-' + file.originalname;
         cb(null, uniqueFilename);
-        logger.info(`Uploaded file: ${uniqueFilename}`); // Log successful upload
+        
+        // Log the successful upload
+        logger.info(`Uploaded file: ${uniqueFilename}`);
     }
 });
 
@@ -38,5 +40,23 @@ const upload = multer({
     }
 });
 
-// Export the upload middleware
-module.exports = upload;
+// Middleware for multiple files upload
+const multipleUpload = (req, res, next) => {
+    const serverIp = process.env.SERVER || 'localhost';
+    
+    if (req.files) {
+        // Construct file URLs for each uploaded file
+        req.fileUrls = req.files.map(file => {
+            const encodedFilename = encodeURIComponent(file.filename);
+            const fileUrl = `${serverIp}/uploads/${encodedFilename}`;
+            logger.info(`File available at: ${fileUrl}`);
+            return fileUrl;
+        });
+    }
+    
+    next();
+};
+
+
+// Export the upload middleware and multipleUpload function
+module.exports = { upload, multipleUpload };
