@@ -5,6 +5,8 @@ const TokenBlacklist = require('../models/TokenBlacklist');
 const successHandler = require('../middlewares/successHandler');
 const logger = require('../config/logger');
 const Admin = require('../models/Admin');
+const sendResetOTPEmail = require('../config/sendResetOTPEmail');
+const crypto = require('crypto');
 const errorHandler = require('../middlewares/errorHandler');
 
 const loginUser = async (req, res, next) => {
@@ -123,8 +125,70 @@ const resetPasswordUsingOldPassword = async (req, res) => {
     }
 };
 
+const sendOtpForPasswordReset = async (req, res) => {
+    try {
+        const { email } = req.body;
+
+        // Find the user by email
+        const user = await User.findOne({ email: email });
+
+        if (!user) {
+            return res.status(404).json({ success: false, message: 'User not found' });
+        }
+
+        // Generate a random 6-digit OTP
+        const otp = crypto.randomInt(100000, 999999);
+
+        // Store the OTP temporarily
+        user.resetOtp = otp;
+        user.otpExpiry = Date.now() + 10 * 60 * 1000;
+        await user.save();
+
+        // Send OTP to user's email
+        await sendResetOTPEmail(user.email, 'Your OTP for Password Reset - PSB Marketing', otp);
+
+        return res.status(200).json({ success: true, message: `OTP sent to email ${email}` });
+    } catch (error) {
+        return res.status(500).json({ success: false, message: 'Server error', error });
+    }
+};
+
+const verifyOtpAndResetPassword = async (req, res) => {
+    try {
+        const { email, otp, newPassword } = req.body;
+
+        // Find the user by email
+        const user = await User.findOne({ email: email }).select('+resetOtp +otpExpiry');
+
+        if (!user) {
+            return res.status(404).json({ success: false, message: 'User not found' });
+        }
+
+        // Check if OTP is valid
+        if (user.resetOtp !== otp || user.otpExpiry < Date.now()) {
+            return res.status(400).json({ success: false, message: 'Invalid or expired OTP' });
+        }
+
+        // Hash the new password
+        const hashedNewPassword = await bcrypt.hash(newPassword, 10);
+
+        // Update the user's password and remove OTP fields
+        user.password = hashedNewPassword;
+        user.resetOtp = undefined;
+        user.otpExpiry = undefined;
+        await user.save();
+
+        return res.status(200).json({ success: true, message: 'Password successfully updated' });
+    } catch (error) {
+        return res.status(500).json({ success: false, message: 'Server error', error });
+    }
+};
+
+
 module.exports = {
     loginUser,
     logoutUser,
-    resetPasswordUsingOldPassword
+    resetPasswordUsingOldPassword,
+    sendOtpForPasswordReset,
+    verifyOtpAndResetPassword
 };

@@ -23,5 +23,7 @@ router.put('/:userId/profile', upload.single('profile'), userController.updateUs
 router.post('/login', authController.loginUser);
 router.post('/logout', authenticate, authController.logoutUser);
 router.post('/reset-password-by-oldpassword', authController.resetPasswordUsingOldPassword);
+router.post('/reset-password-email', authController.sendOtpForPasswordReset);
+router.post('/reset-otp-verify', authController.verifyOtpAndResetPassword);
 
 module.exports = router;
