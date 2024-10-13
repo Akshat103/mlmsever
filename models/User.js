@@ -55,12 +55,10 @@ const UserSchema = new mongoose.Schema({
     },
     parent: {
         type: String,
-        default: null,
-        select: false
+        default: null
     },
     children: {
-        type: [String],
-        select: false
+        type: [String]
     },
     level: {
         type: Number,
@@ -69,13 +67,11 @@ const UserSchema = new mongoose.Schema({
     referredCustomers: [String],
     childCount: {
         type: Number,
-        default: 0,
-        select: false
+        default: 0
     },
     isComplete: {
         type: Boolean,
-        default: false,
-        select: false
+        default: false
     },
     referredCustomersCount: {
         type: Number,
@@ -83,13 +79,11 @@ const UserSchema = new mongoose.Schema({
     },
     totalDescendantsCount: {
         type: Number,
-        default: 0,
-        select: false
+        default: 0
     },
     referredBy: {
         type: String,
-        default: null,
-        select: false
+        default: null
     },
     wallet: {
         type: mongoose.Schema.Types.ObjectId,
