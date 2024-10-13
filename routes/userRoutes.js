@@ -22,5 +22,6 @@ router.put('/:userId/profile', upload.single('profile'), userController.updateUs
 // Auth routes
 router.post('/login', authController.loginUser);
 router.post('/logout', authenticate, authController.logoutUser);
+router.post('/reset-password-by-oldpassword', authController.resetPasswordUsingOldPassword);
 
 module.exports = router;

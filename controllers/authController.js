@@ -86,7 +86,45 @@ const logoutUser = async (req, res, next) => {
     }
 };
 
+const resetPasswordUsingOldPassword = async (req, res) => {
+    try {
+        const { identifier, oldPassword, newPassword } = req.body;
+
+        // Find the user by email or phone number
+        const user = await User.findOne({
+            $or: [
+                { email: identifier },
+                { phoneNumber: identifier }
+            ]
+        });
+
+        if (!user) {
+            logger.warn(`User not found: ${identifier}`);
+            return res.status(404).json({ success: false, message: 'User not found' });
+        }
+
+        // Compare old password with the hashed password in the database
+        const isMatch = await bcrypt.compare(oldPassword, user.password);
+        if (!isMatch) {
+            logger.warn(`Old password is incorrect: ${user.userId}`);
+            return res.status(400).json({ success: false, message: 'Old password is incorrect' });
+        }
+
+        // Hash the new password
+        const hashedNewPassword = await bcrypt.hash(newPassword, 10);
+
+        // Update the user's password
+        user.password = hashedNewPassword;
+        await user.save();
+        logger.info(`Password successfully updated: ${user.userId}`);
+        return res.status(200).json({ success: true, message: 'Password successfully updated' });
+    } catch (error) {
+        return res.status(500).json({ success: false, message: 'Server error', error });
+    }
+};
+
 module.exports = {
     loginUser,
     logoutUser,
+    resetPasswordUsingOldPassword
 };

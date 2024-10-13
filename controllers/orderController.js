@@ -18,6 +18,7 @@ const createOrder = async (req, res, next) => {
         const cart = await Cart.findOne({ user: req.user._id })
             .populate('products.product')
             .session(session);
+        
         if (!cart || cart.products.length === 0) {
             logger.warn(`User ${req.user._id} attempted to create an order with an empty cart`);
             return res.status(400).json({ success: false, message: 'Cart is empty' });
@@ -26,7 +27,7 @@ const createOrder = async (req, res, next) => {
         let totalAmount = 0;
         let totalPoints = 0;
 
-        // Calculate totalAmount and totalPoints
+        // Calculate totalAmount and totalPoints using discountedPrice
         for (let cartItem of cart.products) {
             const product = cartItem.product;
             if (!product || product.stock < cartItem.quantity) {
@@ -36,7 +37,8 @@ const createOrder = async (req, res, next) => {
                     message: `Product ${product.name} is not available in the requested quantity`
                 });
             }
-            totalAmount += parseInt(product.price) * parseInt(cartItem.quantity);
+            // Use discountedPrice for totalAmount calculation
+            totalAmount += parseFloat(product.discountedPrice) * parseInt(cartItem.quantity);
             totalPoints += parseInt(product.points) * parseInt(cartItem.quantity);
         }
 
@@ -46,7 +48,7 @@ const createOrder = async (req, res, next) => {
                 product: item.product._id,
                 quantity: item.quantity
             })),
-            totalAmount,
+            totalAmount: totalAmount.toFixed(2),
             totalPoints
         });
 
