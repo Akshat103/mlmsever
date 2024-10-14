@@ -16,6 +16,7 @@ const getCart = async (req, res, next) => {
 
         let updated = false;
         let totalPrice = 0;
+        let totalPoints = 0;
 
         // Iterate through the cart products
         for (let i = 0; i < cart.products.length; i++) {
@@ -38,6 +39,7 @@ const getCart = async (req, res, next) => {
 
             // Calculate total price based on the discounted price
             totalPrice += parseInt(cartItem.quantity) * parseFloat(product.discountedPrice);
+            totalPoints += parseInt(product.points) * parseInt(cartItem.quantity);
         }
 
         if (updated) {
@@ -48,6 +50,7 @@ const getCart = async (req, res, next) => {
         const response = {
             cart,
             totalPrice, 
+            totalPoints,
             message: updated ? 'Cart updated due to stock changes' : 'Cart retrieved successfully'
         };
 
