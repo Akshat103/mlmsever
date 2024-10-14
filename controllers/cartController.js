@@ -15,21 +15,29 @@ const getCart = async (req, res, next) => {
         }
 
         let updated = false;
+        let totalPrice = 0;
 
+        // Iterate through the cart products
         for (let i = 0; i < cart.products.length; i++) {
             const cartItem = cart.products[i];
             const product = cartItem.product;
 
+            // Remove product from cart if it's out of stock
             if (!product || product.stock <= 0) {
                 cart.products.splice(i, 1);
                 i--;
                 updated = true;
                 logger.warn(`Product removed from cart due to insufficient stock: ${cartItem.product}`);
-            } else if (cartItem.quantity > product.stock) {
+            } 
+            // Adjust quantity if it exceeds stock
+            else if (cartItem.quantity > product.stock) {
                 cartItem.quantity = product.stock;
                 updated = true;
                 logger.warn(`Product quantity updated due to insufficient stock: ${product.name}`);
             }
+
+            // Calculate total price based on the discounted price
+            totalPrice += parseInt(cartItem.quantity) * parseFloat(product.discountedPrice);
         }
 
         if (updated) {
@@ -37,9 +45,58 @@ const getCart = async (req, res, next) => {
             logger.info(`Cart updated for user: ${req.user._id}`);
         }
 
-        successHandler(res, cart, updated ? 'Cart updated due to stock changes' : 'Cart retrieved successfully');
+        const response = {
+            cart,
+            totalPrice, 
+            message: updated ? 'Cart updated due to stock changes' : 'Cart retrieved successfully'
+        };
+
+        successHandler(res, response);
     } catch (err) {
         logger.error(`Error retrieving cart for user ${req.user._id}: ${err.message}`);
+        errorHandler(err, req, res, next);
+    }
+};
+
+const updateCartItemQuantity = async (req, res, next) => {
+    const { productId, quantity } = req.body;
+
+    try {
+        let cart = await Cart.findOne({ user: req.user._id }).populate('products.product');
+
+        if (!cart) {
+            return res.status(404).json({ error: 'Cart not found' });
+        }
+
+        const productIndex = cart.products.findIndex(item => item.product._id.toString() === productId);
+
+        if (productIndex === -1) {
+            return res.status(404).json({ error: 'Product not found in cart' });
+        }
+
+        const product = cart.products[productIndex].product;
+
+        // Check if requested quantity is available
+        if (quantity > product.stock) {
+            return res.status(400).json({ error: `Requested quantity exceeds stock. Available stock: ${product.stock}` });
+        }
+
+        // Update the quantity
+        cart.products[productIndex].quantity = quantity;
+
+        // Save the updated cart
+        await cart.save();
+        logger.info(`Cart item quantity updated for user: ${req.user._id}, product: ${product.name}, quantity: ${quantity}`);
+
+        // Recalculate total price after updating the quantity
+        let totalPrice = 0;
+        cart.products.forEach(cartItem => {
+            totalPrice += cartItem.quantity * (cartItem.product.discountedPrice || cartItem.product.price);
+        });
+
+        successHandler(res, { cart, totalPrice }, 'Cart item quantity updated successfully');
+    } catch (err) {
+        logger.error(`Error updating cart item quantity for user ${req.user._id}: ${err.message}`);
         errorHandler(err, req, res, next);
     }
 };
@@ -124,5 +181,6 @@ module.exports = {
     getCart,
     addProductToCart,
     removeProductFromCart,
-    clearCart
+    clearCart,
+    updateCartItemQuantity
 };
