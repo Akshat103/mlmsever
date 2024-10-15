@@ -85,18 +85,23 @@ const createUser = async (req, res, next) => {
         await session.abortTransaction();
         session.endSession();
 
-        // Handle duplicate key error (like email already exists)
+        // Handle duplicate key error
         if (error.code === 11000) {
+            console.log("error: ", error);
             logger.error(`Duplicate key error: ${error.message}`);
+            
+            const duplicateField = Object.keys(error.keyValue)[0];
+            const duplicateValue = error.keyValue[duplicateField];
+            
             if (!responseSent) {
                 return res.status(400).json({
                     success: false,
-                    error: "Email already exists. Please use a different.",
+                    error: `${duplicateField}: "${duplicateValue}" already exists. Please use a different value.`,
                 });
             }
         }
 
-        // Handle validation errors (like invalid email format)
+        // Handle validation errors
         if (error.name === 'ValidationError') {
             logger.error(`Validation failed: ${error.message}`);
             if (!responseSent) {
