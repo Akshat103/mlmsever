@@ -71,10 +71,12 @@ const updateCartItemQuantity = async (req, res, next) => {
             return res.status(404).json({ error: 'Cart not found' });
         }
 
-        const productIndex = cart.products.findIndex(item => item.product._id.toString() === productId);
+        const productIndex = cart.products.findIndex(item => 
+            item.product._id.toString() === productId && item.size === size
+        );
 
         if (productIndex === -1) {
-            return res.status(404).json({ error: 'Product not found in cart' });
+            return res.status(404).json({ error: 'Product with the specified size not found in cart' });
         }
 
         const product = cart.products[productIndex].product;
@@ -84,14 +86,13 @@ const updateCartItemQuantity = async (req, res, next) => {
             return res.status(400).json({ error: `Requested quantity exceeds stock. Available stock: ${product.stock}` });
         }
 
-        // Update the quantity
+        // Update the quantity and size
         cart.products[productIndex].quantity = quantity;
-
         cart.products[productIndex].size = size;
 
         // Save the updated cart
         await cart.save();
-        logger.info(`Cart item quantity updated for user: ${req.user._id}, product: ${product.name}, quantity: ${quantity}`);
+        logger.info(`Cart item quantity updated for user: ${req.user._id}, product: ${product.name}, quantity: ${quantity}, size: ${size}`);
 
         // Recalculate total price after updating the quantity
         let totalPrice = 0;
@@ -109,8 +110,9 @@ const updateCartItemQuantity = async (req, res, next) => {
 // Add Product to Cart
 const addProductToCart = async (req, res, next) => {
     const { productId, quantity, size } = req.body;
+
     try {
-        let cart = await Cart.findOne({ user: req.user._id });
+        let cart = await Cart.findOne({ user: req.user._id }).populate('products.product');
         const product = await Product.findById(productId);
 
         if (!product || product.stock < quantity) {
@@ -123,14 +125,16 @@ const addProductToCart = async (req, res, next) => {
             logger.info(`Cart created for user: ${req.user._id}`);
         }
 
-        const productInCart = cart.products.find(p => p.product.equals(productId));
+        const productInCart = cart.products.find(p => 
+            p.product.equals(productId) && p.size === size
+        );
 
         if (productInCart) {
             productInCart.quantity = quantity;
-            logger.info(`Product quantity updated in cart: ${product.name}`);
+            logger.info(`Product quantity updated in cart: ${product.name}, size: ${size}`);
         } else {
             cart.products.push({ product: productId, quantity, size });
-            logger.info(`Product added to cart: ${product.name}`);
+            logger.info(`Product added to cart: ${product.name}, size: ${size}`);
         }
 
         await cart.save();
