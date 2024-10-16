@@ -16,4 +16,7 @@ router.put('/update-status', authenticate, isAdmin, orderController.updateOrderS
 // Cancel Order
 router.post('/cancel', authenticate, orderController.cancelOrder);
 
+// Get All Order
+router.get('/get-all', authenticate, isAdmin, orderController.getAllOrders);
+
 module.exports = router;

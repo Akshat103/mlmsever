@@ -26,6 +26,7 @@ registrationQueue.process(async (job) => {
 
             const user = await User.findOne({ userId: userId });
             user.isActive = true;
+            logger.info(`User ${user.userId} activated due to activation product purchase.`);
             user.parent = actualParent.userId;
             await user.save();
 

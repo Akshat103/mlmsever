@@ -15,10 +15,17 @@ const createOrder = async (req, res, next) => {
     session.startTransaction();
 
     try {
+        const { utr } = req.body;
+
+        if (!utr) {
+            logger.warn(`User ${req.user._id} attempted to create an order without a UTR number`);
+            return res.status(400).json({ success: false, message: 'UTR number is required' });
+        }
+
         const cart = await Cart.findOne({ user: req.user._id })
             .populate('products.product')
             .session(session);
-        
+
         if (!cart || cart.products.length === 0) {
             logger.warn(`User ${req.user._id} attempted to create an order with an empty cart`);
             return res.status(400).json({ success: false, message: 'Cart is empty' });
@@ -26,10 +33,12 @@ const createOrder = async (req, res, next) => {
 
         let totalAmount = 0;
         let totalPoints = 0;
+        let hasActivationProduct = false;
 
         // Calculate totalAmount and totalPoints using discountedPrice
         for (let cartItem of cart.products) {
             const product = cartItem.product;
+
             if (!product || product.stock < cartItem.quantity) {
                 logger.warn(`Insufficient stock for product ${product.name} for user ${req.user._id}`);
                 return res.status(400).json({
@@ -37,9 +46,22 @@ const createOrder = async (req, res, next) => {
                     message: `Product ${product.name} is not available in the requested quantity`
                 });
             }
+
             // Use discountedPrice for totalAmount calculation
             totalAmount += parseFloat(product.discountedPrice) * parseInt(cartItem.quantity);
             totalPoints += parseInt(product.points) * parseInt(cartItem.quantity);
+
+            // Check if there's an activation product in the cart
+            if (product.activationProduct) {
+                hasActivationProduct = true;
+            }
+        }
+        if (!hasActivationProduct && !req.user.isActive) {
+            logger.warn(`User ${req.user._id} attempted to create an order without an activation product`);
+            return res.status(400).json({
+                success: false,
+                message: 'At least one activation product is required to place an order'
+            });
         }
 
         const order = new Order({
@@ -49,7 +71,8 @@ const createOrder = async (req, res, next) => {
                 quantity: item.quantity
             })),
             totalAmount: totalAmount.toFixed(2),
-            totalPoints
+            totalPoints,
+            utr,
         });
 
         // Save the order
@@ -162,6 +185,7 @@ const updateOrderStatus = async (req, res, next) => {
 
             if (activationProductExists && !user.isActive) {
                 if (user.referredBy) {
+                    // Registration job
                     const job = await registrationQueue.add({
                         parentId: user.referredBy,
                         userId: user.userId,
@@ -171,17 +195,27 @@ const updateOrderStatus = async (req, res, next) => {
                         const registrationResult = await job.finished();
                         logger.info(`User created successfully: ${user.userId}`);
 
-                        // Start the commission job only after the registration job is completed
-                        await commissionQueue.add({
-                            user: user,
-                            points: order.totalPoints,
-                        });
-
-                        // Commit the transaction after all operations are complete
+                        // Commit the registration transaction
                         await session.commitTransaction();
                         session.endSession();
 
-                        return successHandler(res, { registrationResult, order }, 'Order status updated successfully')
+                        // Start a new session for the commission job
+                        const commissionSession = await mongoose.startSession();
+                        commissionSession.startTransaction();
+
+                        // Refetch the updated user data
+                        const updatedUser = await User.findById(user._id).session(commissionSession);
+
+                        // Commission job after registration
+                        await commissionQueue.add({
+                            user: updatedUser, // Use the updated user data
+                            points: order.totalPoints,
+                        });
+
+                        await commissionSession.commitTransaction();
+                        commissionSession.endSession();
+
+                        return successHandler(res, { registrationResult, order }, 'Order status updated successfully');
                     } catch (error) {
                         logger.error(`Error processing registration for userId ${user.userId}: ${error.message}`);
 
@@ -202,25 +236,43 @@ const updateOrderStatus = async (req, res, next) => {
                     await session.commitTransaction();
                     session.endSession();
 
+                    // Start a new session for the commission job
+                    const commissionSession = await mongoose.startSession();
+                    commissionSession.startTransaction();
+
+                    // Refetch the updated user data
+                    const updatedUser = await User.findById(user._id).session(commissionSession);
+
                     // Queue the commission job
                     await commissionQueue.add({
-                        user: user,
+                        user: updatedUser, // Use the updated user data
                         points: order.totalPoints
                     });
 
+                    await commissionSession.commitTransaction();
+                    commissionSession.endSession();
 
                     logger.info(`User ${req.user._id} activated due to activation product purchase.`);
                     return successHandler(res, order, 'Order status updated successfully');
                 }
             } else {
-                // If no registration is needed, just commit the transaction for commission job
+                // Commit the transaction before starting the commission job
+                await session.commitTransaction();
+                session.endSession();
+
+                // Start a new session for the commission job
+                const commissionSession = await mongoose.startSession();
+                commissionSession.startTransaction();
+
+                const updatedUser = await User.findById(user._id).session(commissionSession);
+
                 await commissionQueue.add({
-                    user: user,
+                    user: updatedUser, // Use the updated user data
                     points: order.totalPoints
                 });
 
-                await session.commitTransaction();
-                session.endSession();
+                await commissionSession.commitTransaction();
+                commissionSession.endSession();
 
                 return successHandler(res, order, 'Order status updated successfully');
             }
@@ -271,9 +323,50 @@ const cancelOrder = async (req, res, next) => {
     }
 };
 
+const getAllOrders = async (req, res, next) => {
+    try {
+        // Get pagination options from query parameters
+        const page = parseInt(req.query.page) || 1;
+        const limit = parseInt(req.query.limit) || 10;
+
+        // Calculate skip for pagination
+        const skip = (page - 1) * limit;
+
+        // Get the total count of orders for pagination purposes
+        const totalOrders = await Order.countDocuments();
+
+        // Retrieve orders with pagination and populate the products
+        const orders = await Order.find()
+            .populate('products.product')
+            .skip(skip)
+            .limit(limit)
+            .sort({ createdAt: -1 });
+
+        // Calculate total pages
+        const totalPages = Math.ceil(totalOrders / limit);
+
+        // Return the orders and pagination details
+        res.status(200).json({
+            success: true,
+            orders,
+            pagination: {
+                totalOrders,
+                totalPages,
+                currentPage: page,
+                hasNextPage: page < totalPages,
+                hasPrevPage: page > 1
+            }
+        });
+    } catch (err) {
+        logger.error(`Error getting orders: ${err.message}`);
+        errorHandler(err, req, res, next);
+    }
+};
+
 module.exports = {
     createOrder,
     getUserOrders,
     updateOrderStatus,
-    cancelOrder
+    cancelOrder,
+    getAllOrders
 };
