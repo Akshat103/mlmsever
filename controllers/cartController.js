@@ -65,44 +65,56 @@ const updateCartItemQuantity = async (req, res, next) => {
     const { productId, quantity, size } = req.body;
 
     try {
+        // Find the cart of the logged-in user and populate the product details
         let cart = await Cart.findOne({ user: req.user._id }).populate('products.product');
 
         if (!cart) {
             return res.status(404).json({ error: 'Cart not found' });
         }
 
-        const productIndex = cart.products.findIndex(item => 
-            item.product._id.toString() === productId && item.size === size
-        );
+        // Find the product in the cart by productId (ignore size for now)
+        const productIndex = cart.products.findIndex(item => {
+            return item.product._id.toString() === productId;
+        });
 
         if (productIndex === -1) {
-            return res.status(404).json({ error: 'Product with the specified size not found in cart' });
+            return res.status(404).json({ error: 'Product not found in cart' });
         }
 
         const product = cart.products[productIndex].product;
 
-        // Check if requested quantity is available
+        // Check if the requested size is available in the product's sizes
+        if (!product.sizes.includes(size)) {
+            return res.status(400).json({ error: 'Requested size not available for this product' });
+        }
+
+        // Check if the requested quantity is available in stock
         if (quantity > product.stock) {
             return res.status(400).json({ error: `Requested quantity exceeds stock. Available stock: ${product.stock}` });
         }
 
-        // Update the quantity and size
+        // Update the quantity and size in the cart
         cart.products[productIndex].quantity = quantity;
         cart.products[productIndex].size = size;
 
         // Save the updated cart
         await cart.save();
-        logger.info(`Cart item quantity updated for user: ${req.user._id}, product: ${product.name}, quantity: ${quantity}, size: ${size}`);
+
+        // Log the update
+        logger.info(`Cart item updated for user: ${req.user._id}, product: ${product.name}, quantity: ${quantity}, size: ${size}`);
 
         // Recalculate total price after updating the quantity
         let totalPrice = 0;
         cart.products.forEach(cartItem => {
-            totalPrice += cartItem.quantity * (cartItem.product.discountedPrice || cartItem.product.price);
+            const price = cartItem.product.discountedPrice || cartItem.product.price;
+            totalPrice += cartItem.quantity * price;
         });
 
-        successHandler(res, { cart, totalPrice }, 'Cart item quantity updated successfully');
+        // Send the updated cart and total price as the response
+        successHandler(res, { cart, totalPrice }, 'Cart item quantity and size updated successfully');
     } catch (err) {
-        logger.error(`Error updating cart item quantity for user ${req.user._id}: ${err.message}`);
+        // Handle any errors that occur
+        logger.error(`Error updating cart item for user ${req.user._id}: ${err.message}`);
         errorHandler(err, req, res, next);
     }
 };
