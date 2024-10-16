@@ -62,7 +62,7 @@ const getCart = async (req, res, next) => {
 };
 
 const updateCartItemQuantity = async (req, res, next) => {
-    const { productId, quantity } = req.body;
+    const { productId, quantity, size } = req.body;
 
     try {
         let cart = await Cart.findOne({ user: req.user._id }).populate('products.product');
@@ -87,6 +87,8 @@ const updateCartItemQuantity = async (req, res, next) => {
         // Update the quantity
         cart.products[productIndex].quantity = quantity;
 
+        cart.products[productIndex].size = size;
+
         // Save the updated cart
         await cart.save();
         logger.info(`Cart item quantity updated for user: ${req.user._id}, product: ${product.name}, quantity: ${quantity}`);
@@ -106,7 +108,7 @@ const updateCartItemQuantity = async (req, res, next) => {
 
 // Add Product to Cart
 const addProductToCart = async (req, res, next) => {
-    const { productId, quantity } = req.body;
+    const { productId, quantity, size } = req.body;
     try {
         let cart = await Cart.findOne({ user: req.user._id });
         const product = await Product.findById(productId);
@@ -127,7 +129,7 @@ const addProductToCart = async (req, res, next) => {
             productInCart.quantity = quantity;
             logger.info(`Product quantity updated in cart: ${product.name}`);
         } else {
-            cart.products.push({ product: productId, quantity });
+            cart.products.push({ product: productId, quantity, size });
             logger.info(`Product added to cart: ${product.name}`);
         }
 
