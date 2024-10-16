@@ -63,11 +63,11 @@ commissionQueue.process(async (job) => {
                 if (!parent) break;
 
                 // Skip if the parent is the direct referrer
-                if (parent.userId === user.referredBy) {
-                    logger.info(`Skipping parent ${parent.userId} as they are the direct referrer`);
-                    currentUser = parent;
-                    continue;
-                }
+                // if (parent.userId === user.referredBy) {
+                //     logger.info(`Skipping parent ${parent.userId} as they are the direct referrer`);
+                //     currentUser = parent;
+                //     continue;
+                // }
 
                 const levelCommission = points * LEVEL_PLAN_COMMISSION;
                 const parentWallet = await Wallet.findOne({ userId: parent.userId });
