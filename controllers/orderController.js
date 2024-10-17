@@ -328,15 +328,22 @@ const getAllOrders = async (req, res, next) => {
         // Get pagination options from query parameters
         const page = parseInt(req.query.page) || 1;
         const limit = parseInt(req.query.limit) || 10;
+        const status = req.query.status; // Get status from query parameters
 
         // Calculate skip for pagination
         const skip = (page - 1) * limit;
 
-        // Get the total count of orders for pagination purposes
-        const totalOrders = await Order.countDocuments();
+        // Create a filter object, include status if it's provided
+        const filter = {};
+        if (status) {
+            filter.status = status; // Filter orders by status if provided
+        }
 
-        // Retrieve orders with pagination and populate the products
-        const orders = await Order.find()
+        // Get the total count of orders based on the filter for pagination purposes
+        const totalOrders = await Order.countDocuments(filter);
+
+        // Retrieve orders with pagination, filtering, and populate the products
+        const orders = await Order.find(filter)
             .populate('products.product')
             .skip(skip)
             .limit(limit)

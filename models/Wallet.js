@@ -41,6 +41,12 @@ const WithdrawalSchema = new mongoose.Schema({
         type: String,
         enum: ['pending', 'processed', 'rejected'],
         default: 'pending'
+    },
+    transactionId: {
+        type: String
+    },
+    image: {
+        type: String
     }
 });
 
@@ -115,7 +121,7 @@ WalletSchema.methods.resetMonthlyBalance = function () {
     }
 };
 
-WalletSchema.methods.addDirectIncome = async function (amount) {
+WalletSchema.methods.addDirectIncomePersonal = async function (amount) {
     const User = mongoose.model('User');
     const user = await User.findOne({ userId: this.userId });
 
@@ -128,7 +134,32 @@ WalletSchema.methods.addDirectIncome = async function (amount) {
         const transaction = {
             amount: amount,
             type: 'credit',
-            description: 'Direct income added'
+            description: 'Direct income added for buying item.'
+        };
+        this.transactions.push(transaction);
+
+        await this.updateGlobalPointPool(amount);
+        await this.checkForReward();
+        await this.assignClubMembership();
+
+        await this.save();
+    }
+};
+
+WalletSchema.methods.addDirectIncome = async function (amount) {
+    const User = mongoose.model('User');
+    const user = await User.findOne({ userId: this.userId });
+
+    if (user.isActive) {
+        this.directIncome.current += amount;
+        this.directIncome.monthly += amount;
+        this.currentBalance += amount;
+        // this.currentMonthlyBalance += amount;
+
+        const transaction = {
+            amount: amount,
+            type: 'credit',
+            description: 'Direct income added for referral.'
         };
         this.transactions.push(transaction);
 
@@ -148,7 +179,7 @@ WalletSchema.methods.addLevelIncome = async function (amount) {
         this.levelIncome.current += amount;
         this.levelIncome.monthly += amount;
         this.currentBalance += amount;
-        this.currentMonthlyBalance += amount;
+        // this.currentMonthlyBalance += amount;
 
         const transaction = {
             amount: amount,
@@ -220,7 +251,10 @@ WalletSchema.methods.assignClubMembership = async function () {
 };
 
 // Method to process a withdrawal in rupees
-WalletSchema.methods.withdraw = async function (amountInRupees) {
+WalletSchema.methods.withdrawRequest = async function (amountInRupees) {
+
+    amountInRupees = Math.floor(amountInRupees);
+
     if (amountInRupees > this.withdrawableAmount) {
         throw new Error('Requested withdrawal amount exceeds the available withdrawable amount.');
     }
@@ -237,8 +271,8 @@ WalletSchema.methods.withdraw = async function (amountInRupees) {
         throw new Error(`Monthly withdrawal limit reached for rank ${user.rank}. Max allowed: ₹${user.maxMonthlyEarnings}`);
     }
 
-    const amountInPoints = amountInRupees * 5;
-    const pointsToWithdraw = amountInPoints / 0.9;
+    const amountInPoints = Math.floor(amountInRupees * 5);
+    const pointsToWithdraw = Math.floor(amountInPoints / 0.9);
 
     const withdrawal = {
         amount: amountInRupees,
@@ -247,12 +281,56 @@ WalletSchema.methods.withdraw = async function (amountInRupees) {
     };
 
     this.withdrawals.push(withdrawal);
-    this.currentBalance -= pointsToWithdraw;
 
     await this.save();
 
     return withdrawal;
 };
 
+WalletSchema.methods.withdraw = async function (withdrawalId, transactionId, image) {
+    const withdrawal = this.withdrawals.id(withdrawalId);
+
+    if (!withdrawal) {
+        throw new Error('Withdrawal request not found.');
+    }
+
+    if (withdrawal.status !== 'pending') {
+        throw new Error('Withdrawal request is not pending.');
+    }
+
+    // Check available balance for processing
+    if (this.withdrawableAmount < withdrawal.amount) {
+        throw new Error('Insufficient balance to process the withdrawal.');
+    }
+
+    // Process withdrawal
+    withdrawal.status = 'processed';
+    withdrawal.transactionId = transactionId;
+    withdrawal.image = image;
+
+    // Deduct amount from current balance
+    this.currentBalance -= withdrawal.pointsWithdrawn;
+    await this.save();
+
+    return withdrawal;
+};
+
+WalletSchema.methods.reject = async function (withdrawalId) {
+    const withdrawal = this.withdrawals.id(withdrawalId);
+
+    if (!withdrawal) {
+        throw new Error('Withdrawal request not found.');
+    }
+
+    if (withdrawal.status !== 'pending') {
+        throw new Error('Withdrawal request is not pending.');
+    }
+
+    // Update status to rejected
+    withdrawal.status = 'rejected';
+    await this.save();
+
+    return withdrawal;
+};
 
 module.exports = mongoose.model('Wallet', WalletSchema);

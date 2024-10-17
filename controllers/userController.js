@@ -1,11 +1,13 @@
 const mongoose = require('mongoose');
 const User = require('../models/User');
+const Wallet = require('../models/Wallet');
 const Admin = require('../models/Admin');
 const bcrypt = require('bcrypt');
 const { v4: uuidv4 } = require('uuid');
 const successHandler = require('../middlewares/successHandler');
 const logger = require('../config/logger');
 const dotenv = require('dotenv');
+const BankDetails = require('../models/BankDetails');
 const errorHandler = require('../middlewares/errorHandler');
 dotenv.config();
 
@@ -89,10 +91,10 @@ const createUser = async (req, res, next) => {
         if (error.code === 11000) {
             console.log("error: ", error);
             logger.error(`Duplicate key error: ${error.message}`);
-            
+
             const duplicateField = Object.keys(error.keyValue)[0];
             const duplicateValue = error.keyValue[duplicateField];
-            
+
             if (!responseSent) {
                 return res.status(400).json({
                     success: false,
@@ -342,6 +344,69 @@ const updateUserProfile = async (req, res) => {
     }
 };
 
+const withdrawRequest = async (req, res) => {
+    const { amountInRupees } = req.body;
+
+    try {
+        // Find the user's wallet by userId
+        const wallet = await Wallet.findOne({ userId: req.user.userId });
+
+        if (!wallet) {
+            logger.error(`Error generating withdraw request. Wallet not found. userId ${req.user.userId}`);
+            return res.status(404).json({ success: false, message: 'Wallet not found.' });
+        }
+
+        // Call the withdraw method on the wallet instance
+        const withdrawal = await wallet.withdrawRequest(amountInRupees);
+        logger.info(`Generated withdraw request userId ${req.user.userId}.`);
+        return res.status(200).json({
+            success: true,
+            message: 'Withdrawal request processed successfully.',
+            withdrawal,
+        });
+    } catch (err) {
+        logger.error(`Error generating withdraw request userId ${req.user.userId}: ${err.message}`);
+        errorHandler(err, req, res, next);
+    }
+};
+
+const createWithdrawalRequest = async (req, res) => {
+    try {
+        const userId = req.user.userId;
+        const amountInRupees = parseInt(req.body.amount);
+
+        // Find the user's wallet
+        const wallet = await Wallet.findOne({ userId });
+
+        if (!wallet) {
+            return res.status(404).json({ message: 'Wallet not found.' });
+        }
+
+        // Call withdrawRequest method
+        const withdrawalRequest = await wallet.withdrawRequest(amountInRupees);
+        console.log(withdrawalRequest)
+        logger.info(`Withdraw request created ${req.user.userId}`);
+        res.status(201).json({
+            success: true,
+            message: 'Withdrawal request created successfully.',
+            withdrawalRequest,
+        });
+    } catch (error) {
+        // Handle different types of errors
+        if (error.message.includes('Requested withdrawal amount exceeds')) {
+            return res.status(400).json({ success: false, message: error.message });
+        }
+        if (error.message.includes('User is not eligible')) {
+            return res.status(403).json({ success: false, message: error.message });
+        }
+        if (error.message.includes('Monthly withdrawal limit reached')) {
+            return res.status(403).json({ success: false, message: error.message });
+        }
+        logger.error(`Error requesting withdraw ${req.user.userId}, Error: ${error.message}`);
+        res.status(500).json({ message: 'Internal server error.' });
+    }
+};
+
 module.exports = {
     createUser,
     getAllUsers,
@@ -353,5 +418,7 @@ module.exports = {
     getClubRank,
     getRankDetails,
     getReferredCustomers,
-    updateUserProfile
+    updateUserProfile,
+    withdrawRequest,
+    createWithdrawalRequest
 };

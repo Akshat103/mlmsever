@@ -19,7 +19,7 @@ commissionQueue.process(async (job) => {
         const userWallet = await Wallet.findOne({ userId: user.userId });
         if (userWallet) {
             try {
-                await userWallet.addDirectIncome(points);
+                await userWallet.addDirectIncomePersonal(points);
                 await userWallet.save();
                 logger.info(`Direct income of ${points} points added to user ${userid}'s wallet`);
             } catch (walletError) {

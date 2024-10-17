@@ -17,7 +17,10 @@ router.get('/:userId/wallet', authenticate, userController.getWalletDetails);
 router.get('/:userId/club', authenticate, userController.getClubRank);
 router.get('/:userId/rank', authenticate, userController.getRankDetails);
 router.get('/:userId/referredCustomers', authenticate, userController.getReferredCustomers);
-router.put('/:userId/profile', upload.single('profile'), userController.updateUserProfile);
+router.put('/:userId/profile', authenticate, upload.single('profile'), userController.updateUserProfile);
+
+// Wallet routes
+router.post('/withdraw-request', authenticate, userController.createWithdrawalRequest);
 
 // Auth routes
 router.post('/login', authController.loginUser);
