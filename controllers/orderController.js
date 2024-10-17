@@ -69,7 +69,7 @@ const createOrder = async (req, res, next) => {
             products: cart.products.map(item => ({
                 product: item.product._id,
                 quantity: item.quantity,
-                size: item.size
+                size: item.size || null
             })),
             totalAmount: totalAmount.toFixed(2),
             totalPoints,
