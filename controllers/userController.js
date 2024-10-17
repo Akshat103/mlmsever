@@ -344,32 +344,6 @@ const updateUserProfile = async (req, res) => {
     }
 };
 
-const withdrawRequest = async (req, res) => {
-    const { amountInRupees } = req.body;
-
-    try {
-        // Find the user's wallet by userId
-        const wallet = await Wallet.findOne({ userId: req.user.userId });
-
-        if (!wallet) {
-            logger.error(`Error generating withdraw request. Wallet not found. userId ${req.user.userId}`);
-            return res.status(404).json({ success: false, message: 'Wallet not found.' });
-        }
-
-        // Call the withdraw method on the wallet instance
-        const withdrawal = await wallet.withdrawRequest(amountInRupees);
-        logger.info(`Generated withdraw request userId ${req.user.userId}.`);
-        return res.status(200).json({
-            success: true,
-            message: 'Withdrawal request processed successfully.',
-            withdrawal,
-        });
-    } catch (err) {
-        logger.error(`Error generating withdraw request userId ${req.user.userId}: ${err.message}`);
-        errorHandler(err, req, res, next);
-    }
-};
-
 const createWithdrawalRequest = async (req, res) => {
     try {
         const userId = req.user.userId;
@@ -384,7 +358,6 @@ const createWithdrawalRequest = async (req, res) => {
 
         // Call withdrawRequest method
         const withdrawalRequest = await wallet.withdrawRequest(amountInRupees);
-        console.log(withdrawalRequest)
         logger.info(`Withdraw request created ${req.user.userId}`);
         res.status(201).json({
             success: true,
@@ -407,6 +380,63 @@ const createWithdrawalRequest = async (req, res) => {
     }
 };
 
+const getPendingWithdrawalRequests = async (req, res) => {
+    try {
+        // Find all wallets that have pending withdrawals
+        const wallets = await Wallet.find({
+            'withdrawals.status': 'pending'
+        }).populate('withdrawals');
+
+        // Create a list of pending requests with associated user and bank details
+        const pendingRequests = [];
+
+        for (let wallet of wallets) {
+            // Filter pending withdrawals for this wallet
+            const pendingWithdrawals = wallet.withdrawals.filter(withdrawal => withdrawal.status === 'pending');
+
+            for (let withdrawal of pendingWithdrawals) {
+                // Fetch user details and bank details for each pending withdrawal
+                const user = await User.findOne({ userId: wallet.userId });
+                const bankDetails = await BankDetails.findOne({ userId: wallet.userId });
+
+                // Push the combined data into pendingRequests array
+                pendingRequests.push({
+                    userId: wallet.userId,
+                    user: {
+                        name: user.name,
+                        email: user.email,
+                        rank: user.rank,
+                        maxMonthlyWithdrawal: user.maxMonthlyWithdrawal
+                    },
+                    bankDetails: {
+                        bankAccountNumber: bankDetails?.bankAccountNumber,
+                        bankName: bankDetails?.bankName,
+                        ifscCode: bankDetails?.ifscCode,
+                        aadharCardNumber: bankDetails?.aadharCardNumber,
+                        panNumber: bankDetails?.panNumber
+                    },
+                    withdrawal: {
+                        amount: withdrawal.amount,
+                        date: withdrawal.date,
+                        pointsWithdrawn: withdrawal.pointsWithdrawn,
+                        status: withdrawal.status,
+                        transactionId: withdrawal.transactionId,
+                        image: withdrawal.image
+                    }
+                });
+            }
+        }
+
+        res.status(200).json({
+            message: 'Pending withdrawal requests retrieved successfully.',
+            pendingRequests,
+        });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ message: 'Internal server error.' });
+    }
+};
+
 module.exports = {
     createUser,
     getAllUsers,
@@ -419,6 +449,5 @@ module.exports = {
     getRankDetails,
     getReferredCustomers,
     updateUserProfile,
-    withdrawRequest,
     createWithdrawalRequest
 };

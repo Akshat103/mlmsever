@@ -27,7 +27,7 @@ const loginUser = async (req, res, next) => {
                 return res.status(401).json({ success: false, message: 'Invalid credentials' });
             }
 
-            const token = jwt.sign({ userId: admin._id }, process.env.JWT_SECRET, { expiresIn: '12h' });
+            const token = jwt.sign({ userId: admin._id }, process.env.JWT_SECRET);
             logger.info(`Admin logged in successfully: ${admin.email}`);
             return successHandler(res, { token, userId: admin._id });
         }
@@ -48,7 +48,7 @@ const loginUser = async (req, res, next) => {
             return res.status(401).json({ success: false, message: 'Invalid credentials' });
         }
 
-        const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, { expiresIn: '12h' });
+        const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET);
         logger.info(`User logged in successfully: ${user.email || user.phoneNumber}`);
         return successHandler(res, { token, userId: user.userId, id: user._id });
     } catch (err) {
