@@ -20,8 +20,10 @@ router.get('/:userId/referredCustomers', authenticate, userController.getReferre
 router.put('/:userId/profile', authenticate, upload.single('profile'), userController.updateUserProfile);
 
 // Wallet routes
-router.post('/withdraw-request', authenticate, userController.createWithdrawalRequest);
-router.post('/pending-request', authenticate, userController.getPendingWithdrawalRequests);
+router.post('/withdraw/request', authenticate, userController.createWithdrawalRequest);
+router.get('/withdraw/pending', authenticate, isAdmin, userController.getPendingWithdrawalRequests);
+router.post('/withdraw/process', authenticate, isAdmin, userController.processWithdrawalRequest);
+router.post('/withdraw/reject', authenticate, isAdmin, userController.rejectWithdrawalRequest);
 
 // Auth routes
 router.post('/login', authController.loginUser);

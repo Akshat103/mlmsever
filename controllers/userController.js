@@ -404,7 +404,7 @@ const getPendingWithdrawalRequests = async (req, res) => {
                     userId: wallet.userId,
                     user: {
                         name: user.name,
-                        email: user.email,
+                        phoneNumber: user.phoneNumber,
                         rank: user.rank,
                         maxMonthlyWithdrawal: user.maxMonthlyWithdrawal
                     },
@@ -415,25 +415,71 @@ const getPendingWithdrawalRequests = async (req, res) => {
                         aadharCardNumber: bankDetails?.aadharCardNumber,
                         panNumber: bankDetails?.panNumber
                     },
-                    withdrawal: {
-                        amount: withdrawal.amount,
-                        date: withdrawal.date,
-                        pointsWithdrawn: withdrawal.pointsWithdrawn,
-                        status: withdrawal.status,
-                        transactionId: withdrawal.transactionId,
-                        image: withdrawal.image
-                    }
+                    withdrawal
                 });
             }
         }
-
+        logger.info(`Sent pending withdraw requests.`);
         res.status(200).json({
+            success: true,
             message: 'Pending withdrawal requests retrieved successfully.',
             pendingRequests,
         });
     } catch (error) {
-        console.error(error);
-        res.status(500).json({ message: 'Internal server error.' });
+        logger.error(`Error getting pending withdrawal requests. ${error.message}`);
+        res.status(500).json({ success: false, message: 'Internal server error.' });
+    }
+};
+
+// Controller to process a withdrawal request
+const processWithdrawalRequest = async (req, res) => {
+    try {
+        const { userId, withdrawalId, transactionId, image } = req.body;
+
+        // Find the user's wallet by userId
+        const wallet = await Wallet.findOne({ userId });
+
+        if (!wallet) {
+            return res.status(404).json({ success:false, message: 'Wallet not found.' });
+        }
+
+        // Process the withdrawal request
+        const withdrawal = await wallet.withdraw(withdrawalId, transactionId, image);
+        logger.info(`Withdrawal request processed successfully. ${userId}, ${withdrawalId}`);
+
+        return res.status(200).json({
+            success: true,
+            message: 'Withdrawal processed successfully.',
+            withdrawal
+        });
+    } catch (error) {
+        logger.error(`Error processing pending withdrawal requests. ${userId}, ${withdrawalId} ${error.message}`);
+        return res.status(400).json({ success: false, message: error.message });
+    }
+};
+
+// Controller to reject a withdrawal request
+const rejectWithdrawalRequest = async (req, res) => {
+    try {
+        const { userId, withdrawalId } = req.body;
+        // Find the user's wallet by userId
+        const wallet = await Wallet.findOne({ userId });
+
+        if (!wallet) {
+            return res.status(404).json({ success: false, message: 'Wallet not found.' });
+        }
+
+        // Reject the withdrawal request
+        const withdrawal = await wallet.reject(withdrawalId);
+        logger.info(`Withdrawal request rejected successfully. ${userId}, ${withdrawalId}`);
+        return res.status(200).json({
+            success: true,
+            message: 'Withdrawal request rejected successfully.',
+            withdrawal
+        });
+    } catch (error) {
+        logger.error(`Error rejecting pending withdrawal requests. ${userId}, ${withdrawalId} ${error.message}`);
+        return res.status(400).json({ success: false, message: error.message });
     }
 };
 
@@ -450,5 +496,7 @@ module.exports = {
     getReferredCustomers,
     updateUserProfile,
     createWithdrawalRequest,
-    getPendingWithdrawalRequests
+    getPendingWithdrawalRequests,
+    processWithdrawalRequest,
+    rejectWithdrawalRequest
 };
