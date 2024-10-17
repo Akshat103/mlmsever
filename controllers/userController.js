@@ -449,5 +449,6 @@ module.exports = {
     getRankDetails,
     getReferredCustomers,
     updateUserProfile,
-    createWithdrawalRequest
+    createWithdrawalRequest,
+    getPendingWithdrawalRequests
 };

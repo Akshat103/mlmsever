@@ -21,6 +21,7 @@ router.put('/:userId/profile', authenticate, upload.single('profile'), userContr
 
 // Wallet routes
 router.post('/withdraw-request', authenticate, userController.createWithdrawalRequest);
+router.post('/pending-request', authenticate, userController.getPendingWithdrawalRequests);
 
 // Auth routes
 router.post('/login', authController.loginUser);
