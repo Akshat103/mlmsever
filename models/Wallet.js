@@ -188,6 +188,8 @@ WalletSchema.methods.addLevelIncome = async function (amount) {
         };
         this.transactions.push(transaction);
 
+        logger.info(`Level commission of ${amount} points added to parent ${this.userId}`);
+
         await this.updateGlobalPointPool(amount);
         await this.checkForReward();
         await this.assignClubMembership();
@@ -200,7 +202,7 @@ WalletSchema.methods.updateGlobalPointPool = async function (amount) {
     try {
         const globalPointPool = await GlobalPointPool.findOrCreateForCurrentMonth();
         globalPointPool.totalMonthlyPoints += amount;
-        
+
         logger.info(`Global point pool updated: ${JSON.stringify(globalPointPool.totalMonthlyPoints)}`);
 
         await globalPointPool.save();

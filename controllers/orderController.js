@@ -7,7 +7,7 @@ const { commissionQueue } = require('../queues/commissionQueue');
 const mongoose = require('mongoose');
 const logger = require('../config/logger');
 const User = require('../models/User');
-const { registrationQueue } = require('../queues/processRegistrationQueue');
+const { unifiedQueue } = require('../queues/unifiedQueue');
 
 // Create an Order from Cart
 const createOrder = async (req, res, next) => {
@@ -137,16 +137,16 @@ async function checkActivationProduct(order) {
 const updateOrderStatus = async (req, res, next) => {
     const session = await mongoose.startSession();
     session.startTransaction();
-
     try {
         const { orderId, status } = req.body;
         const statusMap = {
             0: 'Pending',
             1: 'Shipped',
             2: 'Delivered',
-            3: 'Cancelled'
+            3: 'Cancelled',
         };
 
+        // Validate status
         if (!(status in statusMap)) {
             logger.warn(`Invalid status update attempt for order ${orderId} by user ${req.user._id}`);
             await session.abortTransaction();
@@ -154,6 +154,7 @@ const updateOrderStatus = async (req, res, next) => {
             return res.status(400).json({ success: false, message: 'Invalid status' });
         }
 
+        // Find the order
         const order = await Order.findById(orderId).populate('products').session(session);
         if (!order) {
             logger.warn(`Order ${orderId} not found for user ${req.user._id}`);
@@ -162,6 +163,7 @@ const updateOrderStatus = async (req, res, next) => {
             return res.status(404).json({ success: false, message: 'Order not found' });
         }
 
+        // Check user authorization
         if (order.user.toString() !== req.user._id.toString() && !req.user.isAdmin) {
             logger.warn(`Unauthorized status update attempt for order ${orderId} by user ${req.user._id}`);
             await session.abortTransaction();
@@ -178,104 +180,50 @@ const updateOrderStatus = async (req, res, next) => {
         if (order.status === 'Delivered') {
             const activationProductExists = await checkActivationProduct(order);
             const user = await User.findById(order.user).session(session);
-
             if (!user) {
-                logger.error(`User not found for ID: ${user.userid}`);
-                throw new Error('User not found');
+                logger.error(`User not found for ID: ${order.user}`);
+                await session.abortTransaction();
+                session.endSession();
+                return res.status(404).json({ success: false, message: 'User not found' });
             }
 
-            if (activationProductExists && !user.isActive) {
-                if (user.referredBy) {
+            try {
+                if (activationProductExists && !user.isActive) {
                     // Registration job
-                    const job = await registrationQueue.add({
+                    const job = await unifiedQueue.add({
                         parentId: user.referredBy,
                         userId: user.userId,
+                        points: order.totalPoints,
                     });
-
-                    try {
-                        const registrationResult = await job.finished();
-                        logger.info(`User created successfully: ${user.userId}`);
-
-                        // Commit the registration transaction
-                        await session.commitTransaction();
-                        session.endSession();
-
-                        // Start a new session for the commission job
-                        const commissionSession = await mongoose.startSession();
-                        commissionSession.startTransaction();
-
-                        // Refetch the updated user data
-                        const updatedUser = await User.findById(user._id).session(commissionSession);
-
-                        // Commission job after registration
-                        await commissionQueue.add({
-                            user: updatedUser, // Use the updated user data
-                            points: order.totalPoints,
-                        });
-
-                        await commissionSession.commitTransaction();
-                        commissionSession.endSession();
-
-                        return successHandler(res, { registrationResult, order }, 'Order status updated successfully');
-                    } catch (error) {
-                        logger.error(`Error processing registration for userId ${user.userId}: ${error.message}`);
-
-                        // Only abort if the transaction hasn't been committed
-                        if (session.inTransaction()) {
-                            await session.abortTransaction();
-                        }
-                        session.endSession();
-
-                        return res.status(500).json({
-                            success: false,
-                            error: "An error occurred while processing your registration: " + error.message,
-                        });
-                    }
-                } else {
-                    user.isActive = true;
-                    await user.save({ session });
+                    logger.info(`User created successfully: ${user.userId}`);
                     await session.commitTransaction();
                     session.endSession();
-
-                    // Start a new session for the commission job
-                    const commissionSession = await mongoose.startSession();
-                    commissionSession.startTransaction();
-
-                    // Refetch the updated user data
-                    const updatedUser = await User.findById(user._id).session(commissionSession);
-
+                    return successHandler(res, { order }, 'Order status updated successfully');
+                } else {
+                    // Prepare updated user without saving yet
+                    const updatedUser = { ...user.toObject(), isActive: true };
                     // Queue the commission job
                     await commissionQueue.add({
                         user: updatedUser, // Use the updated user data
-                        points: order.totalPoints
+                        points: order.totalPoints,
                     });
 
-                    await commissionSession.commitTransaction();
-                    commissionSession.endSession();
+                    // If commission fails, throw error
+                    await commissionQueue.on('failed', (error) => {
+                        throw new Error(`Commission processing failed: ${error.message}`);
+                    });
 
+                    await session.commitTransaction();
+                    session.endSession();
                     logger.info(`User ${req.user._id} activated due to activation product purchase.`);
                     return successHandler(res, order, 'Order status updated successfully');
                 }
-            } else {
-                // Commit the transaction before starting the commission job
-                await session.commitTransaction();
+            } catch (error) {
+                // Handle commission or registration failure
+                logger.error(`Error during commission processing for User: ${user.userId}, Error: ${error.message}`);
+                await session.abortTransaction();
                 session.endSession();
-
-                // Start a new session for the commission job
-                const commissionSession = await mongoose.startSession();
-                commissionSession.startTransaction();
-
-                const updatedUser = await User.findById(user._id).session(commissionSession);
-
-                await commissionQueue.add({
-                    user: updatedUser, // Use the updated user data
-                    points: order.totalPoints
-                });
-
-                await commissionSession.commitTransaction();
-                commissionSession.endSession();
-
-                return successHandler(res, order, 'Order status updated successfully');
+                return res.status(500).json({ success: false, message: 'Commission processing failed. Please try again.' });
             }
         }
 

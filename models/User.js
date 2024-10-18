@@ -55,11 +55,12 @@ const UserSchema = new mongoose.Schema({
     },
     parent: {
         type: String,
-        default: null
+        default: null,
+        index: true
     },
-    children: {
-        type: [String]
-    },
+    children: [
+        { type: String, index: true }
+    ],
     level: {
         type: Number,
         default: 0

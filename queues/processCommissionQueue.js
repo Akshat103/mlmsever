@@ -57,31 +57,27 @@ commissionQueue.process(async (job) => {
 
         // Level Plan: 5% commission for each parent up to the root node
         let currentUser = user;
+        const levelCommission = points * LEVEL_PLAN_COMMISSION;
+        const levelCommissions = []; // Store promises for parallel execution
+
         while (currentUser.parent) {
             try {
                 const parent = await User.findOne({ userId: currentUser.parent });
                 if (!parent) break;
 
-                // Skip if the parent is the direct referrer
-                // if (parent.userId === user.referredBy) {
-                //     logger.info(`Skipping parent ${parent.userId} as they are the direct referrer`);
-                //     currentUser = parent;
-                //     continue;
-                // }
-
-                const levelCommission = points * LEVEL_PLAN_COMMISSION;
                 const parentWallet = await Wallet.findOne({ userId: parent.userId });
-                if (parentWallet) {
-                    try {
-                        await parentWallet.addLevelIncome(levelCommission);
-                        await parentWallet.save();
-                        logger.info(`Level commission of ${levelCommission} points added to parent ${parent.userId}`);
-                    } catch (parentWalletError) {
-                        logger.error(`Failed to add level commission to parent wallet: ${parentWalletError.message}`);
-                    }
-                } else {
+                if (!parentWallet) {
                     logger.error(`Parent wallet not found for ID: ${parent.userId}`);
+                    currentUser = parent; // Move to the next parent even if wallet is not found
+                    continue; // Skip further processing for this parent
                 }
+
+                // Use levelIncome method to handle income addition
+                levelCommissions.push(
+                    parentWallet.addLevelIncome(levelCommission).catch(err => {
+                        logger.error(`Failed to add level commission to parent ${parent.userId}: ${err.message}`);
+                    })
+                );
 
                 // Move to the next parent in the hierarchy
                 currentUser = parent;
@@ -90,7 +86,10 @@ commissionQueue.process(async (job) => {
                 break; // Exit loop if there's an issue retrieving parent data
             }
         }
-        
+
+        // Execute all level income updates in parallel
+        await Promise.all(levelCommissions);
+
         logger.info(`Commission processing completed for User: ${userid}`);
     } catch (error) {
         logger.error(`Error during commission processing for User: ${userid}, Error: ${error.message}`);
