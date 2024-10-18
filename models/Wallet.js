@@ -125,77 +125,71 @@ WalletSchema.methods.addDirectIncomePersonal = async function (amount) {
     const User = mongoose.model('User');
     const user = await User.findOne({ userId: this.userId });
 
-    if (user.isActive) {
-        this.directIncome.current += amount;
-        this.directIncome.monthly += amount;
-        this.currentBalance += amount;
-        this.currentMonthlyBalance += amount;
+    this.directIncome.current += amount;
+    this.directIncome.monthly += amount;
+    this.currentBalance += amount;
+    this.currentMonthlyBalance += amount;
 
-        const transaction = {
-            amount: amount,
-            type: 'credit',
-            description: 'Direct income added for buying item.'
-        };
-        this.transactions.push(transaction);
+    const transaction = {
+        amount: amount,
+        type: 'credit',
+        description: 'Direct income added for buying item.'
+    };
+    this.transactions.push(transaction);
 
-        await this.updateGlobalPointPool(amount);
-        await this.checkForReward();
-        await this.assignClubMembership();
+    await this.updateGlobalPointPool(amount);
+    await this.checkForReward();
+    await this.assignClubMembership();
 
-        await this.save();
-    }
+    await this.save();
 };
 
 WalletSchema.methods.addDirectIncome = async function (amount) {
     const User = mongoose.model('User');
     const user = await User.findOne({ userId: this.userId });
 
-    if (user.isActive) {
-        this.directIncome.current += amount;
-        this.directIncome.monthly += amount;
-        this.currentBalance += amount;
-        // this.currentMonthlyBalance += amount;
+    this.directIncome.current += amount;
+    this.directIncome.monthly += amount;
+    this.currentBalance += amount;
+    // this.currentMonthlyBalance += amount;
 
-        const transaction = {
-            amount: amount,
-            type: 'credit',
-            description: 'Direct income added for referral.'
-        };
-        this.transactions.push(transaction);
+    const transaction = {
+        amount: amount,
+        type: 'credit',
+        description: 'Direct income added for referral.'
+    };
+    this.transactions.push(transaction);
 
-        await this.updateGlobalPointPool(amount);
-        await this.checkForReward();
-        await this.assignClubMembership();
+    await this.updateGlobalPointPool(amount);
+    await this.checkForReward();
+    await this.assignClubMembership();
 
-        await this.save();
-    }
+    await this.save();
 };
 
 WalletSchema.methods.addLevelIncome = async function (amount) {
     const User = mongoose.model('User');
     const user = await User.findOne({ userId: this.userId });
 
-    if (user.isActive) {
-        this.levelIncome.current += amount;
-        this.levelIncome.monthly += amount;
-        this.currentBalance += amount;
-        // this.currentMonthlyBalance += amount;
+    this.levelIncome.current += amount;
+    this.levelIncome.monthly += amount;
+    this.currentBalance += amount;
+    // this.currentMonthlyBalance += amount;
 
-        const transaction = {
-            amount: amount,
-            type: 'credit',
-            description: 'Level income added'
-        };
-        this.transactions.push(transaction);
+    const transaction = {
+        amount: amount,
+        type: 'credit',
+        description: 'Level income added'
+    };
+    this.transactions.push(transaction);
 
-        logger.info(`Level commission of ${amount} points added to parent ${this.userId}`);
+    logger.info(`Level commission of ${amount} points added to parent ${this.userId}`);
 
-        await this.updateGlobalPointPool(amount);
-        await this.checkForReward();
-        await this.assignClubMembership();
+    await this.updateGlobalPointPool(amount);
+    await this.checkForReward();
+    await this.assignClubMembership();
 
-        await this.save();
-    }
+    await this.save();
 };
 
 WalletSchema.methods.updateGlobalPointPool = async function (amount) {
