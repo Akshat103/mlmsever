@@ -80,6 +80,10 @@ async function processJob(job) {
 
             await updateAncestors(actualParent.userId, session);
         }
+        else{
+            user.isActive = true;
+            await user.save({ session });
+        }
 
         // Commission Processing
         await processCommissions(user, points, referredBy, session);
