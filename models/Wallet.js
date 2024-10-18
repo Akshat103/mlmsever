@@ -122,9 +122,6 @@ WalletSchema.methods.resetMonthlyBalance = function () {
 };
 
 WalletSchema.methods.addDirectIncomePersonal = async function (amount) {
-    const User = mongoose.model('User');
-    const user = await User.findOne({ userId: this.userId });
-
     this.directIncome.current += amount;
     this.directIncome.monthly += amount;
     this.currentBalance += amount;
@@ -145,9 +142,6 @@ WalletSchema.methods.addDirectIncomePersonal = async function (amount) {
 };
 
 WalletSchema.methods.addDirectIncome = async function (amount) {
-    const User = mongoose.model('User');
-    const user = await User.findOne({ userId: this.userId });
-
     this.directIncome.current += amount;
     this.directIncome.monthly += amount;
     this.currentBalance += amount;
@@ -168,9 +162,6 @@ WalletSchema.methods.addDirectIncome = async function (amount) {
 };
 
 WalletSchema.methods.addLevelIncome = async function (amount) {
-    const User = mongoose.model('User');
-    const user = await User.findOne({ userId: this.userId });
-
     this.levelIncome.current += amount;
     this.levelIncome.monthly += amount;
     this.currentBalance += amount;
