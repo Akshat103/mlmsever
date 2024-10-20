@@ -32,4 +32,9 @@ router.post('/reset-password-by-oldpassword', authController.resetPasswordUsingO
 router.post('/reset-password-email', authController.sendOtpForPasswordReset);
 router.post('/reset-otp-verify', authController.verifyOtpAndResetPassword);
 
+// Development routes
+
+router.post('/depth-config', userController.updateAllDepth);
+router.post('/level-config', userController.updateLevelsFromRoot);
+
 module.exports = router;

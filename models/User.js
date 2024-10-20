@@ -65,6 +65,10 @@ const UserSchema = new mongoose.Schema({
         type: Number,
         default: 0
     },
+    depth: {
+        type: Number,
+        default: 1
+    },
     referredCustomers: [String],
     childCount: {
         type: Number,

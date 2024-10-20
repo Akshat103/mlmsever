@@ -9,6 +9,7 @@ const logger = require('../config/logger');
 const dotenv = require('dotenv');
 const BankDetails = require('../models/BankDetails');
 const errorHandler = require('../middlewares/errorHandler');
+const { findNextAvailableSpot } = require('../queues/unifiedQueue');
 dotenv.config();
 
 // Generate 10-character alphanumeric userId
@@ -52,9 +53,15 @@ const createUser = async (req, res, next) => {
                 if (!parentUser) {
                     throw new Error('Referrer user does not exist.');
                 }
-
                 if (!parentUser.isActive) {
                     throw new Error('Referrer user is not active.');
+                }
+
+                const actualParent = await findNextAvailableSpot(parentId);
+
+                if (actualParent === null) {
+                    logger.warn(`No available spot found for in the entire tree.`);
+                    return res.status(200).json({ success: false, message: `Tree is full. Make new ID without refer or join other tree.` });
                 }
 
                 const newUser = new User({
@@ -211,6 +218,7 @@ const getHierarchy = async (req, res) => {
             return {
                 name: customer.userId,
                 level: customer.level,
+                depth: customer.depth,
                 parents: await getParents(customer.userId),
                 immediate_children: customer.children,
                 referred_customers: customer.referredCustomers,
@@ -440,7 +448,7 @@ const processWithdrawalRequest = async (req, res) => {
         const wallet = await Wallet.findOne({ userId });
 
         if (!wallet) {
-            return res.status(404).json({ success:false, message: 'Wallet not found.' });
+            return res.status(404).json({ success: false, message: 'Wallet not found.' });
         }
 
         // Process the withdrawal request
@@ -483,6 +491,139 @@ const rejectWithdrawalRequest = async (req, res) => {
     }
 };
 
+const updateAllDepth = async (req, res) => {
+    const { rootUserId } = req.body;
+    logger.info(`Starting to update depth for all nodes, root userId: ${rootUserId}`);
+
+    try {
+        // Helper function to recursively update depth
+        async function updateDepthRecursive(userId, currentDepth) {
+            const user = await User.findOne({ userId: userId });
+            if (!user) {
+                logger.warn(`User not found for userId: ${userId}`);
+                return;
+            }
+
+            // Update the user's depth
+            user.depth = Math.min(currentDepth, 15);
+            await user.save();
+            logger.info(`Updated userId: ${userId} with depth: ${user.depth}`);
+
+            // Recursively update children
+            for (const childId of user.children) {
+                await updateDepthRecursive(childId, currentDepth + 1);
+            }
+        }
+
+        // Start the recursive update from the root
+        await updateDepthRecursive(rootUserId, 1);
+
+        logger.info('Finished updating depth for all nodes');
+        return { success: true, message: 'All depth updated successfully' };
+    } catch (error) {
+        logger.error(`Error updating depth: ${error.message}`);
+        return { success: false, message: 'Error updating depth', error: error.message };
+    }
+}
+
+const updateLevelsFromRoot = async (req, res) => {
+    const { rootId } = req.body;
+    logger.info(`Starting level update from rootId: ${rootId}`);
+
+    // Initialize a queue with the root user
+    const queue = [rootId];
+
+    while (queue.length > 0) {
+        const currentUserId = queue.shift();
+        const currentUser = await User.findOne({ userId: currentUserId });
+
+        if (!currentUser) {
+            logger.warn(`User not found for userId: ${currentUserId}`);
+            continue; // Skip if user not found
+        }
+
+        // Update ancestors
+        await updateAncestors(currentUser.userId);
+
+        // Enqueue children for processing
+        if (currentUser.children && currentUser.children.length > 0) {
+            queue.push(...currentUser.children);
+        }
+    }
+
+    logger.info('Level update completed for all nodes.');
+}
+
+async function updateAncestors(customerId) {
+    logger.info(`Updating ancestors for customerId: ${customerId}`);
+    let current = await User.findOne({ userId: customerId });
+
+    while (current) {
+        await updateTotalDescendantsCount(current.userId);
+        await updateReferredCustomerCount(current.userId);
+        current.childCount = current.children.length;
+        current.isComplete = current.children.length === 3;
+
+        if (current.children.length === 3) {
+            const childLevels = await Promise.all(current.children.map(async (childId) => {
+                const child = await User.findOne({ userId: childId });
+                return child.level;
+            }));
+
+            if (current.level === (Math.min(...childLevels) + 1)) {
+                break;
+            }
+
+            current.level = Math.min(...childLevels) + 1;
+            if (current.level > 15) {
+                current.level = 15;
+            }
+        } else {
+            current.level = 0;
+        }
+
+        await current.save();
+        logger.info(`Updated userId: ${current.userId} with level: ${current.level}, totalDescendantsCount: ${current.totalDescendantsCount}`);
+
+        current = await User.findOne({ userId: current.parent });
+    }
+}
+
+async function updateTotalDescendantsCount(userId) {
+    const result = await User.aggregate([
+        { $match: { userId } },
+        {
+            $graphLookup: {
+                from: "users",
+                startWith: "$children",
+                connectFromField: "children",
+                connectToField: "userId",
+                as: "descendants"
+            }
+        },
+        {
+            $project: {
+                totalDescendantsCount: { $size: "$descendants" }
+            }
+        }
+    ]);
+
+    if (result.length > 0) {
+        await User.updateOne(
+            { userId },
+            { $set: { totalDescendantsCount: result[0].totalDescendantsCount } }
+        );
+    }
+}
+
+async function updateReferredCustomerCount(userId) {
+    const user = await User.findOne({ userId });
+    if (user) {
+        user.referredCustomersCount = user.referredCustomers.length;
+        await user.save();
+    }
+}
+
 module.exports = {
     createUser,
     getAllUsers,
@@ -498,5 +639,7 @@ module.exports = {
     createWithdrawalRequest,
     getPendingWithdrawalRequests,
     processWithdrawalRequest,
-    rejectWithdrawalRequest
+    rejectWithdrawalRequest,
+    updateAllDepth,
+    updateLevelsFromRoot
 };

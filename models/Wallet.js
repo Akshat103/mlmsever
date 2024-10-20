@@ -134,6 +134,8 @@ WalletSchema.methods.addDirectIncomePersonal = async function (amount) {
     };
     this.transactions.push(transaction);
 
+    logger.info(`Direct income of ${amount} points added to ${this.userId} for buying item.`);
+
     await this.updateGlobalPointPool(amount);
     await this.checkForReward();
     await this.assignClubMembership();
@@ -153,6 +155,8 @@ WalletSchema.methods.addDirectIncome = async function (amount) {
         description: 'Direct income added for referral.'
     };
     this.transactions.push(transaction);
+
+    logger.info(`Direct commission of ${amount} points added to ${this.userId} for referral.`);
 
     await this.updateGlobalPointPool(amount);
     await this.checkForReward();

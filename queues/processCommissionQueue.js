@@ -91,6 +91,8 @@ commissionQueue.process(async (job) => {
         await Promise.all(levelCommissions);
 
         logger.info(`Commission processing completed for User: ${userid}`);
+        return { message: `Commission processing completed for User: ${userid}.`, userId, success: true };
+
     } catch (error) {
         logger.error(`Error during commission processing for User: ${userid}, Error: ${error.message}`);
     }
