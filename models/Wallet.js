@@ -94,9 +94,9 @@ const WalletSchema = new mongoose.Schema({
 
 // Virtual property to calculate withdrawable amount
 WalletSchema.virtual('withdrawableAmount').get(function () {
-    if (this.currentMonthlyBalance < 500) {
-        return 0;
-    }
+    // if (this.currentMonthlyBalance < 500) {
+    //     return 0;
+    // }
     const grossAmountInRupees = Math.floor(this.currentBalance / 5);
     const tdsAndAdminCharges = grossAmountInRupees * 0.1;
     return grossAmountInRupees - tdsAndAdminCharges;
@@ -106,7 +106,8 @@ WalletSchema.virtual('withdrawableAmount').get(function () {
 WalletSchema.methods.isEligibleForWithdrawal = async function () {
     const User = mongoose.model('User');
     const user = await User.findOne({ userId: this.userId });
-    return user.referredCustomersCount >= 3 && this.currentMonthlyBalance >= 500;
+    // return user.referredCustomersCount >= 3 && this.currentMonthlyBalance >= 500;
+    return user.referredCustomersCount >= 3;
 };
 
 // Method to reset monthly balance
